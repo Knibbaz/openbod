@@ -21,6 +21,62 @@ Lokaal uitproberen kan zonder proxy:
 PUBLIC_URL=http://localhost:8080 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
+## Op een eigen VPS
+
+Eenmalig, als root of met sudo:
+
+```
+apt update && apt install -y docker.io docker-compose-plugin git
+git clone https://github.com/Knibbaz/openbod.git /opt/openbod
+cd /opt/openbod
+cp deploy/.env.example deploy/.env
+```
+
+Zet in `deploy/.env` je eigen domein bij `PUBLIC_URL`. Laat `BIND_ADDRESS` op
+`127.0.0.1` staan: de stack praat alleen met de proxy, niet met het open internet.
+
+TLS met Caddy op de host, die meteen een certificaat regelt. In `/etc/caddy/Caddyfile`:
+
+```
+demo.jouwdomein.nl {
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+Dan starten, en als systemd-unit laten terugkomen na een herstart. In
+`/etc/systemd/system/openbod.service`:
+
+```ini
+[Unit]
+Description=OpenBod demo-instantie
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/openbod
+ExecStart=/usr/bin/docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+ExecStop=/usr/bin/docker compose -f deploy/docker-compose.yml down
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```
+systemctl daemon-reload && systemctl enable --now openbod
+```
+
+Bijwerken na een nieuwe commit:
+
+```
+cd /opt/openbod && git pull && systemctl restart openbod
+```
+
+De containers hebben uitgaande toegang tot `api.drand.sh` nodig. Inkomend is alleen
+443 voor de proxy nodig; poort 8080 hoort niet open te staan.
+
 ## Hoe het in elkaar zit
 
 | Container | Wat het is | Naar buiten |
