@@ -80,6 +80,8 @@ export interface SealedBid {
   withdrawn: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Index van de logregel die dit bod het laatst vastlegde (plaatsen of aanpassen). */
+  logIndex: number;
 }
 
 export interface RevealedBid extends BidPayload {

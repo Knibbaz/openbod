@@ -26,6 +26,24 @@ export interface Listing {
   bidCount?: number;
 }
 
+export interface BidReceipt {
+  bidId: string;
+  listingId: string;
+  commitment: string;
+  logIndex: number;
+  prevHash: string;
+  entryHash: string;
+  timestamp: string;
+  instanceSignature: string;
+}
+
+/** Wat de core over je eigen bod kan zeggen: nooit het bedrag, wél het bewijs. */
+export interface MyBid extends BidReceipt {
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LogEntry {
   index: number;
   timestamp: string;
@@ -121,7 +139,28 @@ export const coreApi = {
       headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify({ commitment, ciphertext }),
     });
-    return json<{ bidId: string; logIndex: number; entryHash: string }>(res);
+    return json<BidReceipt>(res);
+  },
+  async adjustBid(listingId: string, bidId: string, commitment: string, ciphertext: string) {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/bids/${bidId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ commitment, ciphertext }),
+    });
+    return json<BidReceipt>(res);
+  },
+  async withdrawBid(listingId: string, bidId: string) {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/bids/${bidId}`, {
+      method: "DELETE",
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  },
+  /** null als je (nog) geen lopend bod hebt; 404 is hier een normaal antwoord. */
+  async getMyBid(listingId: string): Promise<MyBid | null> {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/my-bid`, { headers: authHeaders() });
+    if (res.status === 404 || res.status === 401) return null;
+    return json<MyBid>(res);
   },
   async getLogbook(listingId: string) {
     return json<Logbook>(await fetch(`${CORE_URL}/listings/${listingId}/logbook`));

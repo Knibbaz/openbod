@@ -85,11 +85,32 @@ export class OpenBodStore {
     return [...rec.bids.values()].filter((b) => !b.withdrawn).length;
   }
 
+  /** Het lopende bod van deze bieder, of undefined. Ingetrokken biedingen tellen niet mee. */
+  activeBidFor(listingId: string, bidderSub: string): SealedBid | undefined {
+    const rec = this.record(listingId);
+    return [...rec.bids.values()].find((b) => b.bidderSub === bidderSub && !b.withdrawn);
+  }
+
+  /** Het ontvangstbewijs van je eigen lopende bod, zodat je het later kunt narekenen. */
+  receiptForBidder(listingId: string, bidderSub: string): BidReceipt | undefined {
+    const sealed = this.activeBidFor(listingId, bidderSub);
+    if (!sealed) return undefined;
+    return this.receiptFor(this.record(listingId), sealed, sealed.logIndex);
+  }
+
   placeBid(listingId: string, bidderSub: string, commitment: string, ciphertext: string): BidReceipt {
     const rec = this.record(listingId);
     this.assertBiedfase(rec);
+    // Eén lopend bod per bieder per woning. Zonder deze regel kan één account het
+    // veld vullen met tien biedingen, en dat vertekent zowel het zichtbare aantal
+    // als het beeld dat de verkoper bij de onthulling krijgt. Wie zijn bod wil
+    // veranderen, past het aan (`adjustBid`) — dat blijft zichtbaar in het logboek.
+    if (this.activeBidFor(listingId, bidderSub)) {
+      throw new RuleViolationError("je hebt al een lopend bod op deze woning; pas het aan of trek het eerst in");
+    }
     const bidId = randomUUID();
     const now = new Date().toISOString();
+    const entry = rec.chain.append("bid_placed", sha256Hex(commitment));
     const sealed: SealedBid = {
       bidId,
       listingId,
@@ -100,9 +121,9 @@ export class OpenBodStore {
       withdrawn: false,
       createdAt: now,
       updatedAt: now,
+      logIndex: entry.index,
     };
     rec.bids.set(bidId, sealed);
-    const entry = rec.chain.append("bid_placed", sha256Hex(commitment));
     return this.receiptFor(rec, sealed, entry.index);
   }
 
@@ -116,15 +137,16 @@ export class OpenBodStore {
     if (!existing || existing.bidderSub !== bidderSub || existing.withdrawn) {
       throw new RuleViolationError("bod niet gevonden of niet van deze bieder");
     }
+    const entry = rec.chain.append("bid_adjusted", sha256Hex(commitment));
     const updated: SealedBid = {
       ...existing,
       commitment,
       ciphertext,
       version: existing.version + 1,
       updatedAt: new Date().toISOString(),
+      logIndex: entry.index,
     };
     rec.bids.set(bidId, updated);
-    const entry = rec.chain.append("bid_adjusted", sha256Hex(commitment));
     return this.receiptFor(rec, updated, entry.index);
   }
 

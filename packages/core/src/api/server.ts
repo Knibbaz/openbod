@@ -18,6 +18,7 @@ import {
   listingListResponse,
   listingPublicResponse,
   logbookResponse,
+  myBidResponse,
   proofResponse,
   receiptResponse,
   sealedBidBody,
@@ -184,6 +185,25 @@ app.post(
     }
   },
 );
+
+app.get("/listings/:id/my-bid", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    const sub = await requireIdentity(req);
+    const receipt = store.receiptForBidder(params.id, sub);
+    if (!receipt) return reply.status(404).send({ error: "geen lopend bod van deze bieder" });
+    const sealed = store.activeBidFor(params.id, sub)!;
+    return sendValidated(reply, myBidResponse, {
+      ...receipt,
+      version: sealed.version,
+      createdAt: sealed.createdAt,
+      updatedAt: sealed.updatedAt,
+    });
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
 
 app.get("/listings/:id/logbook", async (req, reply) => {
   const params = parseParamsOr400(listingIdParams, req.params, reply);

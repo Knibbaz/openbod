@@ -87,6 +87,43 @@ describe("End-to-end biedflow (E2, E3, E4, E7, E8)", () => {
     expect(logbook.entries[0].invalidReason).toMatch(/commitment/);
   }, 20000);
 
+  it("één lopend bod per bieder; aanpassen en opnieuw bieden na intrekken mag wel", async () => {
+    const store = new OpenBodStore();
+    const deadline = shortDeadline(60000);
+    const listing = store.createListing({
+      address: "Dubbelstraat 2",
+      prijsVorm: "vraagprijs",
+      verkoopmethode: "inschrijving",
+      deadline,
+      rules: { intrekkenToegestaan: true, aanpassenToegestaan: true, aantalBiedingenZichtbaar: true },
+      takeoverItems: [],
+    });
+    const first = await sealBid({ amount: 400000, conditions: [], takeover: [] }, deadline);
+    const receipt = store.placeBid(listing.id, "sub-eve", first.commitment, first.ciphertext);
+
+    const second = await sealBid({ amount: 410000, conditions: [], takeover: [] }, deadline);
+    expect(() => store.placeBid(listing.id, "sub-eve", second.commitment, second.ciphertext)).toThrowError(
+      /al een lopend bod/,
+    );
+    expect(store.bidCount(listing.id)).toBe(1);
+
+    // aanpassen mag; het ontvangstbewijs wijst dan naar de nieuwe logregel
+    const adjusted = store.adjustBid(listing.id, receipt.bidId, "sub-eve", second.commitment, second.ciphertext);
+    expect(adjusted.logIndex).toBeGreaterThan(receipt.logIndex);
+    expect(store.receiptForBidder(listing.id, "sub-eve")?.entryHash).toBe(adjusted.entryHash);
+
+    // na intrekken is het veld weer vrij voor deze bieder
+    store.withdrawBid(listing.id, receipt.bidId, "sub-eve");
+    expect(store.receiptForBidder(listing.id, "sub-eve")).toBeUndefined();
+    const third = await sealBid({ amount: 420000, conditions: [], takeover: [] }, deadline);
+    expect(() => store.placeBid(listing.id, "sub-eve", third.commitment, third.ciphertext)).not.toThrow();
+
+    // een andere bieder wordt hier niet door geraakt
+    const other = await sealBid({ amount: 430000, conditions: [], takeover: [] }, deadline);
+    expect(() => store.placeBid(listing.id, "sub-frank", other.commitment, other.ciphertext)).not.toThrow();
+    expect(store.bidCount(listing.id)).toBe(2);
+  }, 20000);
+
   it("gelijktijdig onthullen levert geen dubbele bid_revealed-regels op", async () => {
     const store = new OpenBodStore();
     const deadline = shortDeadline(4000);

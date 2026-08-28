@@ -142,3 +142,22 @@ export const proofResponse = z.object({
 export const instanceKeyResponse = z.object({
   publicKeyPem: z.string(),
 });
+
+/**
+ * Je eigen lopende bod. Bevat bewust géén bedrag of ciphertext: de core kan
+ * die vóór de deadline zelf niet lezen, en zou ze dus ook niet kunnen tonen.
+ * Wat je hier terugkrijgt is het bewijs dát je bod erin zit en wanneer.
+ */
+export const myBidResponse = z.object({
+  bidId: uuidSchema,
+  listingId: uuidSchema,
+  commitment: sha256HexSchema,
+  logIndex: z.number().int().nonnegative(),
+  prevHash: z.string(),
+  entryHash: z.string(),
+  timestamp: z.string(),
+  instanceSignature: z.string(),
+  version: z.number().int().positive(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});

@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { coreApi, getToken, type Listing, type Logbook, type OvernameStatus, type TakeoverItem } from "../lib/api";
+import {
+  coreApi,
+  getToken,
+  type Listing,
+  type Logbook,
+  type MyBid,
+  type OvernameStatus,
+  type TakeoverItem,
+} from "../lib/api";
 import { sealBid, type OvernameChoice, type Voorbehoud } from "../lib/seal";
 import { verifyHashChainInBrowser } from "../lib/verify";
 
@@ -67,7 +75,7 @@ export function ListingDetail() {
   const [conditions, setConditions] = useState<Record<string, VoorbehoudState>>({});
   const [takeover, setTakeover] = useState<Record<string, TakeoverState>>({});
   const [sealing, setSealing] = useState(false);
-  const [receipt, setReceipt] = useState<{ bidId: string; entryHash: string } | null>(null);
+  const [myBid, setMyBid] = useState<MyBid | null>(null);
 
   const [chainCheck, setChainCheck] = useState<{ valid: boolean; firstBrokenIndex?: number } | null>(null);
 
@@ -79,6 +87,10 @@ export function ListingDetail() {
         const l = await coreApi.getListing(id!);
         if (cancelled) return;
         setListing(l);
+        if (getToken() && l.status === "biedfase") {
+          const mine = await coreApi.getMyBid(id!);
+          if (!cancelled) setMyBid(mine);
+        }
         if (l.status === "onthuld" || l.status === "onherroepelijk") {
           const lb = await coreApi.getLogbook(id!);
           if (!cancelled) setLogbook(lb);
@@ -163,12 +175,28 @@ export function ListingDetail() {
     setError(null);
     try {
       const { commitment, ciphertext } = await sealBid(payload, listing.deadline);
-      const res = await coreApi.placeBid(id, commitment, ciphertext);
-      setReceipt(res);
+      // Aanpassen is een nieuwe verzegeling van het hele pakket, geen patch op de
+      // inhoud: de core kan het oude bod niet lezen, dus er valt niets te wijzigen
+      // behalve het geheel. Het logboek houdt beide versies vast.
+      const res = myBid
+        ? await coreApi.adjustBid(id, myBid.bidId, commitment, ciphertext)
+        : await coreApi.placeBid(id, commitment, ciphertext);
+      setMyBid({ ...res, version: (myBid?.version ?? 0) + 1, createdAt: myBid?.createdAt ?? res.timestamp, updatedAt: res.timestamp });
     } catch (err) {
       setError(String(err));
     } finally {
       setSealing(false);
+    }
+  }
+
+  async function onWithdraw() {
+    if (!id || !myBid) return;
+    setError(null);
+    try {
+      await coreApi.withdrawBid(id, myBid.bidId);
+      setMyBid(null);
+    } catch (err) {
+      setError(String(err));
     }
   }
 
@@ -220,9 +248,63 @@ export function ListingDetail() {
         </section>
       )}
 
+      {listing.status === "biedfase" && myBid && (
+        <section>
+          <h2>Jouw lopende bod</h2>
+          <p>
+            Dit is je bewijs dat je bod in het logboek staat. Bewaar het: na de onthulling kun je hiermee narekenen dat
+            precies dit bod is meegeteld. Het bedrag staat er bewust niet bij — de server kan dat zelf nog niet lezen.
+          </p>
+          <table>
+            <tbody>
+              <tr>
+                <th>Ingediend op</th>
+                <td>{new Date(myBid.createdAt).toLocaleString("nl-NL")}</td>
+              </tr>
+              <tr>
+                <th>Laatst gewijzigd</th>
+                <td>
+                  {new Date(myBid.updatedAt).toLocaleString("nl-NL")} (versie {myBid.version})
+                </td>
+              </tr>
+              <tr>
+                <th>bidId</th>
+                <td>
+                  <code>{myBid.bidId}</code>
+                </td>
+              </tr>
+              <tr>
+                <th>Logregel</th>
+                <td>#{myBid.logIndex}</td>
+              </tr>
+              <tr>
+                <th>entryHash</th>
+                <td>
+                  <code>{myBid.entryHash}</code>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {listing.rules.intrekkenToegestaan ? (
+            <button onClick={onWithdraw}>Bod intrekken</button>
+          ) : (
+            <p>Intrekken is voor deze woning niet toegestaan. Dat stond vooraf vast, voor iedereen gelijk.</p>
+          )}
+        </section>
+      )}
+
       {listing.status === "biedfase" && (
         <section>
-          <h2>Verzegeld bod plaatsen</h2>
+          <h2>{myBid ? "Je bod aanpassen" : "Verzegeld bod plaatsen"}</h2>
+          {myBid && !listing.rules.aanpassenToegestaan && (
+            <p>Aanpassen is voor deze woning niet toegestaan. Dat stond vooraf vast, voor iedereen gelijk.</p>
+          )}
+          {myBid && listing.rules.aanpassenToegestaan && (
+            <p>
+              Je vervangt hiermee je hele bod door een nieuwe verzegeling. Dat je hebt aangepast blijft in het logboek
+              staan, wat je aanpaste niet — dat is tot de deadline voor niemand leesbaar.
+            </p>
+          )}
           <p>
             Je hele bod — bedrag, datums, voorbehouden, overname en motivatie — wordt in deze browser versleuteld naar
             de deadline. Deze server kan het pas erna lezen.
@@ -323,15 +405,9 @@ export function ListingDetail() {
             Motivatie (optioneel, alleen voor de verkoper na onthulling)
             <textarea value={motivation} onChange={(e) => setMotivation(e.target.value)} />
           </label>
-          <button onClick={onBid} disabled={sealing}>
-            {sealing ? "Verzegelen via drand…" : "Verzegeld bod indienen"}
+          <button onClick={onBid} disabled={sealing || (myBid !== null && !listing.rules.aanpassenToegestaan)}>
+            {sealing ? "Verzegelen via drand…" : myBid ? "Aangepast bod verzegelen" : "Verzegeld bod indienen"}
           </button>
-          {receipt && (
-            <p>
-              Ontvangstbewijs ontvangen: bidId <code>{receipt.bidId}</code>, logIndex bevestigd, entryHash{" "}
-              <code>{receipt.entryHash.slice(0, 16)}…</code>
-            </p>
-          )}
         </section>
       )}
 
@@ -392,7 +468,13 @@ export function ListingDetail() {
             De motivatie staat bewust niet in dit logboek: die gaat alleen naar de verkoper, niet naar de andere
             bieders.
           </p>
-          <button onClick={onVerify}>Hashketen in de browser herrekenen</button>
+          <h3>Zelf controleren</h3>
+          <p>
+            Elke regel hierboven bevat de hash van de regel ervóór. Wie achteraf iets wijzigt, invoegt of weghaalt,
+            breekt die keten op een zichtbare plek. Met de knop hieronder rekent <em>jouw browser</em> de hele keten
+            opnieuw uit. Je hoeft deze server dus niet te geloven: je controleert zijn huiswerk.
+          </p>
+          <button onClick={onVerify}>Controleer zelf of er niets gewijzigd is</button>
           {chainCheck && (
             <p>
               {chainCheck.valid
@@ -401,8 +483,10 @@ export function ListingDetail() {
             </p>
           )}
           <p>
-            Voor volledige onafhankelijke verificatie (inclusief de handtekening) download het logboek en draai{" "}
-            <code>openbod-verify logbook logboek.json</code> uit <code>packages/verifier</code>.
+            Wat deze controle <strong>niet</strong> zegt: of dit logboek echt van deze instantie komt. Daarvoor is de
+            handtekening onderaan het logboek nodig, en die kun je alleen buiten de browser natrekken. Download het
+            logboek en draai <code>openbod-verify logbook logboek.json</code> uit <code>packages/verifier</code>; dat
+            controleert de keten, de root-hash én de handtekening.
           </p>
           <button
             onClick={() => {
