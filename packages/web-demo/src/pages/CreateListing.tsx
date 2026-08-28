@@ -1,14 +1,40 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { coreApi } from "../lib/api";
+import { coreApi, type OvernameStatus } from "../lib/api";
+
+const STATUS_OPTIONS: { value: OvernameStatus; label: string }[] = [
+  { value: "blijft_achter", label: "Blijft achter" },
+  { value: "gevraagd_bedrag", label: "Ter overname voor een vast bedrag" },
+  { value: "in_overleg", label: "Ter overname, in overleg" },
+  { value: "niet_beschikbaar", label: "Niet beschikbaar" },
+];
+
+interface ItemDraft {
+  label: string;
+  status: OvernameStatus;
+  amount: string;
+}
+
+const EMPTY_ITEM: ItemDraft = { label: "", status: "in_overleg", amount: "" };
 
 export function CreateListing() {
   const navigate = useNavigate();
   const [address, setAddress] = useState("Voorbeeldstraat 1, Amsterdam");
   const [askingPrice, setAskingPrice] = useState(500000);
   const [minutesFromNow, setMinutesFromNow] = useState(2);
+  const [intrekkenToegestaan, setIntrekken] = useState(true);
+  const [aanpassenToegestaan, setAanpassen] = useState(true);
+  const [aantalBiedingenZichtbaar, setAantalZichtbaar] = useState(true);
+  const [items, setItems] = useState<ItemDraft[]>([
+    { label: "Gordijnen woonkamer", status: "in_overleg", amount: "" },
+    { label: "Wasmachine", status: "gevraagd_bedrag", amount: "200" },
+  ]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function setItem(index: number, patch: Partial<ItemDraft>) {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -22,8 +48,15 @@ export function CreateListing() {
         askingPrice,
         verkoopmethode: "bieden_met_deadline",
         deadline,
-        rules: { intrekkenToegestaan: true, aanpassenToegestaan: true, aantalBiedingenZichtbaar: true },
-        takeoverItems: [{ label: "Gordijnen woonkamer", status: "in_overleg" }],
+        rules: { intrekkenToegestaan, aanpassenToegestaan, aantalBiedingenZichtbaar },
+        takeoverItems: items
+          .filter((item) => item.label.trim())
+          .map((item) => ({
+            label: item.label.trim(),
+            status: item.status,
+            // Alleen een vast bedrag heeft een bedrag; bij "in overleg" bepaalt de bieder.
+            amount: item.status === "gevraagd_bedrag" && item.amount ? Number(item.amount) : undefined,
+          })),
       });
       navigate(`/woningen/${listing.id}`);
     } catch (err) {
@@ -55,6 +88,63 @@ export function CreateListing() {
             required
           />
         </label>
+
+        <h2>Spelregels</h2>
+        <p>Deze staan vooraf vast en gelden voor iedereen gelijk.</p>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={intrekkenToegestaan} onChange={(e) => setIntrekken(e.target.checked)} />
+          Bieder mag zijn bod vóór de deadline intrekken
+        </label>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={aanpassenToegestaan} onChange={(e) => setAanpassen(e.target.checked)} />
+          Bieder mag zijn bod vóór de deadline aanpassen
+        </label>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={aantalBiedingenZichtbaar}
+            onChange={(e) => setAantalZichtbaar(e.target.checked)}
+          />
+          Aantal biedingen is zichtbaar (bedragen nooit, tot de deadline)
+        </label>
+
+        <h2>Roerende zaken</h2>
+        <p>Wat kan de koper overnemen? De bieder kiest hier straks per item.</p>
+        {items.map((item, i) => (
+          <div key={i}>
+            <label>
+              Item
+              <input
+                value={item.label}
+                placeholder="bijv. Tuinset"
+                onChange={(e) => setItem(i, { label: e.target.value })}
+              />
+            </label>
+            <label>
+              Status
+              <select value={item.status} onChange={(e) => setItem(i, { status: e.target.value as OvernameStatus })}>
+                {STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {item.status === "gevraagd_bedrag" && (
+              <label>
+                Gevraagd bedrag (EUR)
+                <input type="number" min={0} value={item.amount} onChange={(e) => setItem(i, { amount: e.target.value })} />
+              </label>
+            )}
+            <button type="button" onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}>
+              Verwijderen
+            </button>
+          </div>
+        ))}
+        <button type="button" onClick={() => setItems((prev) => [...prev, { ...EMPTY_ITEM }])}>
+          Item toevoegen
+        </button>
+
         <button type="submit" disabled={submitting}>
           {submitting ? "Bezig…" : "Aanmaken"}
         </button>

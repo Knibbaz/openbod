@@ -1,5 +1,16 @@
+import type { OvernameChoice, Voorbehoud } from "./seal";
+
 export const CORE_URL = import.meta.env.VITE_CORE_URL ?? "http://localhost:4000";
 export const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL ?? "http://localhost:4001";
+
+export type OvernameStatus = "blijft_achter" | "gevraagd_bedrag" | "in_overleg" | "niet_beschikbaar";
+
+export interface TakeoverItem {
+  itemId: string;
+  label: string;
+  status: OvernameStatus;
+  amount?: number;
+}
 
 export interface Listing {
   id: string;
@@ -9,7 +20,7 @@ export interface Listing {
   verkoopmethode: "inschrijving" | "onderhandeling" | "bieden_met_deadline";
   deadline: string;
   rules: { intrekkenToegestaan: boolean; aanpassenToegestaan: boolean; aantalBiedingenZichtbaar: boolean };
-  takeoverItems: { itemId: string; label: string; status: string; amount?: number }[];
+  takeoverItems: TakeoverItem[];
   status: "aangemaakt" | "biedfase" | "gesloten" | "onthuld" | "onherroepelijk";
   createdAt: string;
   bidCount?: number;
@@ -31,8 +42,8 @@ export interface Logbook {
     amount: number;
     handoverDate?: string;
     validUntil?: string;
-    conditions: unknown[];
-    takeover: unknown[];
+    conditions: Voorbehoud[];
+    takeover: OvernameChoice[];
     valid: boolean;
     invalidReason?: string;
   }[];

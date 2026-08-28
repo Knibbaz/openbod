@@ -36,6 +36,8 @@ interface ListingRecord {
   bids: Map<string, SealedBid>;
   revealed?: RevealedBid[];
   logbook?: Logbook;
+  /** Zie `revealListing`: houdt een lopende onthulling vast tegen dubbele logregels. */
+  revealing?: Promise<Logbook>;
 }
 
 /**
@@ -151,12 +153,34 @@ export class OpenBodStore {
     return rec.listing;
   }
 
-  /** Onthulling: ontsleutelt alle geldige (niet-ingetrokken) biedingen en valideert tegen hun commitment (I2). */
-  async revealListing(listingId: string): Promise<Logbook> {
+  /**
+   * Onthulling: ontsleutelt alle geldige (niet-ingetrokken) biedingen en valideert
+   * tegen hun commitment (I2).
+   *
+   * De statuscheck alleen is niet genoeg. Onthullen duurt seconden (drand ophalen
+   * plus decryptie per bod) en de scheduler in de API roept dit herhaald aan zolang
+   * de status "gesloten" is. Zonder deze guard passeert een tweede aanroep de check
+   * terwijl de eerste nog await't, en komen dezelfde biedingen twee keer als
+   * `bid_revealed` in de hashketen — een logboek dat klopt qua hashes maar liegt
+   * over wat er gebeurd is. Gelijktijdige aanroepen delen daarom één onthulling.
+   */
+  revealListing(listingId: string): Promise<Logbook> {
     const rec = this.record(listingId);
+    if (rec.revealing) return rec.revealing;
     if (rec.listing.status !== "gesloten") {
-      throw new InvalidTransitionError(`kan niet onthullen vanuit status ${rec.listing.status}`);
+      return Promise.reject(
+        new InvalidTransitionError(`kan niet onthullen vanuit status ${rec.listing.status}`),
+      );
     }
+    // Mislukt de onthulling (bijvoorbeeld drand onbereikbaar), dan geven we de
+    // sleutel terug vrij zodat de scheduler het opnieuw mag proberen.
+    rec.revealing = this.performReveal(rec).finally(() => {
+      rec.revealing = undefined;
+    });
+    return rec.revealing;
+  }
+
+  private async performReveal(rec: ListingRecord): Promise<Logbook> {
     const active = [...rec.bids.values()].filter((b) => !b.withdrawn);
     const revealed: RevealedBid[] = [];
     for (const sealed of active) {

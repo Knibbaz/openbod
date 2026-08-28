@@ -87,6 +87,37 @@ describe("End-to-end biedflow (E2, E3, E4, E7, E8)", () => {
     expect(logbook.entries[0].invalidReason).toMatch(/commitment/);
   }, 20000);
 
+  it("gelijktijdig onthullen levert geen dubbele bid_revealed-regels op", async () => {
+    const store = new OpenBodStore();
+    const deadline = shortDeadline(4000);
+    const listing = store.createListing({
+      address: "Racestraat 5",
+      prijsVorm: "vraagprijs",
+      verkoopmethode: "inschrijving",
+      deadline,
+      rules: { intrekkenToegestaan: false, aanpassenToegestaan: false, aantalBiedingenZichtbaar: true },
+      takeoverItems: [],
+    });
+    const sealed = await sealBid({ amount: 400000, conditions: [], takeover: [] }, deadline);
+    store.placeBid(listing.id, "sub-dave", sealed.commitment, sealed.ciphertext);
+
+    await new Promise((r) => setTimeout(r, 5000));
+    store.closeListing(listing.id);
+
+    // De scheduler in de API roept elke 2s aan; onthullen duurt langer dan dat.
+    // Beide aanroepen horen dezelfde onthulling te delen, niet er twee te doen.
+    const [first, second] = await Promise.all([
+      store.revealListing(listing.id),
+      store.revealListing(listing.id),
+    ]);
+
+    expect(first.rootHash).toBe(second.rootHash);
+    const reveals = first.log.filter((e) => e.type === "bid_revealed");
+    expect(reveals).toHaveLength(1);
+    expect(first.entries).toHaveLength(1);
+    expect(HashChain.verify(first.log).valid).toBe(true);
+  }, 20000);
+
   it("intrekken zonder toestemming wordt geweigerd (E6-S1)", async () => {
     const store = new OpenBodStore();
     const deadline = shortDeadline(60000);
