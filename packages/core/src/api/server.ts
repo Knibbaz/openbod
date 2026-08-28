@@ -1,0 +1,286 @@
+import Fastify, { type FastifyError, type FastifyReply, type FastifyRequest } from "fastify";
+import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
+import { z } from "zod";
+import {
+  OpenBodStore,
+  ListingNotFoundError,
+  InvalidTransitionError,
+  RuleViolationError,
+} from "../store.js";
+import { verifyIdentityToken } from "./identity.js";
+import {
+  bidParams,
+  createListingBody,
+  instanceKeyResponse,
+  listingIdParams,
+  listingListResponse,
+  listingPublicResponse,
+  logbookResponse,
+  proofResponse,
+  receiptResponse,
+  sealedBidBody,
+} from "./schemas.js";
+
+const PORT = Number(process.env.CORE_PORT ?? 4000);
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+// Standaard alleen de lokale demo-frontend. In productie moet dit expliciet
+// naar het echte domein van de deployment wijzen — geen wildcard-CORS voor
+// een API die met een bearer-token authenticeert.
+const ALLOWED_ORIGINS = (process.env.CORE_ALLOWED_ORIGINS ?? "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+export const store = new OpenBodStore();
+
+const app = Fastify({
+  logger: false,
+  bodyLimit: 256 * 1024, // ruim boven een biedpakket, ver onder een DoS-poging
+  trustProxy: process.env.TRUST_PROXY === "true",
+});
+
+await app.register(helmet, { contentSecurityPolicy: false });
+await app.register(cors, {
+  origin: ALLOWED_ORIGINS,
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+});
+await app.register(rateLimit, {
+  max: 300,
+  timeWindow: "1 minute",
+  // IP-gebaseerd: goed genoeg tegen een enkele misbruikende client voor de
+  // MVP. Distributed abuse vraagt om een edge/WAF-laag, buiten deze scope.
+});
+
+/**
+ * Elke response gaat door zijn zod-schema vóórdat hij verstuurd wordt.
+ * `.parse` strip onbekende velden en gooit als een verplicht veld ontbreekt
+ * of het verkeerde type heeft — dus een programmeerfout die per ongeluk een
+ * intern veld (zoals `bidderSub`) zou lekken, faalt hard in plaats van
+ * stilletjes de deur uit te gaan.
+ */
+function sendValidated<T>(reply: FastifyReply, schema: z.ZodType<T>, data: unknown, status = 200) {
+  const validated = schema.parse(data);
+  return reply.status(status).send(validated);
+}
+
+async function requireIdentity(req: FastifyRequest): Promise<string> {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    throw Object.assign(new Error("ontbrekend identiteitstoken"), { statusCode: 401 });
+  }
+  try {
+    const identity = await verifyIdentityToken(header.slice("Bearer ".length));
+    return identity.sub;
+  } catch {
+    throw Object.assign(new Error("ongeldig of verlopen identiteitstoken"), { statusCode: 401 });
+  }
+}
+
+function parseParamsOr400<T>(schema: z.ZodType<T>, params: unknown, reply: FastifyReply): T | undefined {
+  const parsed = schema.safeParse(params);
+  if (!parsed.success) {
+    reply.status(400).send({ error: "ongeldige URL-parameters" });
+    return undefined;
+  }
+  return parsed.data;
+}
+
+app.post(
+  "/listings",
+  { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const parsed = createListingBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      const listing = store.createListing(parsed.data);
+      return sendValidated(reply, listingPublicResponse, listing, 201);
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+app.get("/listings", async (_req, reply) => {
+  const listings = store.allListings().map((listing) => publicListingView(listing.id));
+  return sendValidated(reply, listingListResponse, listings);
+});
+
+app.get("/listings/:id", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    return sendValidated(reply, listingPublicResponse, publicListingView(params.id));
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
+
+app.post(
+  "/listings/:id/bids",
+  { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    const parsed = sealedBidBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      const sub = await requireIdentity(req);
+      const receipt = store.placeBid(params.id, sub, parsed.data.commitment, parsed.data.ciphertext);
+      return sendValidated(reply, receiptResponse, receipt, 201);
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+app.patch(
+  "/listings/:id/bids/:bidId",
+  { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(bidParams, req.params, reply);
+    if (!params) return;
+    const parsed = sealedBidBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      const sub = await requireIdentity(req);
+      const receipt = store.adjustBid(params.id, params.bidId, sub, parsed.data.commitment, parsed.data.ciphertext);
+      return sendValidated(reply, receiptResponse, receipt);
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+app.delete(
+  "/listings/:id/bids/:bidId",
+  { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(bidParams, req.params, reply);
+    if (!params) return;
+    try {
+      const sub = await requireIdentity(req);
+      store.withdrawBid(params.id, params.bidId, sub);
+      return reply.status(204).send();
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+app.post(
+  "/listings/:id/close",
+  { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    try {
+      const listing = store.closeListing(params.id);
+      return sendValidated(reply, listingPublicResponse, listing);
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+app.get("/listings/:id/logbook", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    return sendValidated(reply, logbookResponse, store.getLogbook(params.id));
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
+
+app.get("/listings/:id/proof/:bidId", async (req, reply) => {
+  const params = parseParamsOr400(bidParams, req.params, reply);
+  if (!params) return;
+  try {
+    return sendValidated(reply, proofResponse, store.getProof(params.id, params.bidId));
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
+
+app.get("/listings/:id/instance-key", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    store.getListing(params.id);
+    return sendValidated(reply, instanceKeyResponse, { publicKeyPem: store.keypair.publicKeyPem() });
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
+
+function publicListingView(id: string) {
+  const listing = store.getListing(id);
+  return {
+    ...listing,
+    askingPrice: listing.prijsVorm === "vraagprijs" ? listing.askingPrice : undefined,
+    bidCount: listing.rules.aantalBiedingenZichtbaar ? store.bidCount(id) : undefined,
+  };
+}
+
+function handleDomainError(err: unknown, reply: FastifyReply) {
+  if (err instanceof ListingNotFoundError) return reply.status(404).send({ error: err.message });
+  if (err instanceof InvalidTransitionError) return reply.status(409).send({ error: err.message });
+  if (err instanceof RuleViolationError) return reply.status(422).send({ error: err.message });
+  if (err instanceof Error && "statusCode" in err) {
+    return reply.status((err as Error & { statusCode: number }).statusCode).send({ error: err.message });
+  }
+  // Nooit de ruwe fout (met stack trace of interne details) naar de client.
+  app.log.error(err);
+  console.error(err);
+  return reply.status(500).send({ error: "interne fout" });
+}
+
+app.setErrorHandler((err: FastifyError, _req, reply) => {
+  // Vangt ook fouten buiten de route-handlers om (bodyLimit, rate-limit
+  // interne fouten, JSON-parsefouten), altijd zonder details te lekken.
+  if (err.statusCode && err.statusCode < 500) {
+    return reply.status(err.statusCode).send({ error: err.message });
+  }
+  console.error(err);
+  return reply.status(500).send({ error: "interne fout" });
+});
+
+/**
+ * E3-S1: automatische onthulling op de deadline, zonder actie van bieders.
+ * Een productie-instantie doet dit met een betrouwbare scheduler/queue;
+ * voor de MVP-demo volstaat een korte polling-lus.
+ */
+setInterval(() => {
+  void autoCloseAndReveal();
+}, 2000);
+
+async function autoCloseAndReveal() {
+  for (const listing of store.allListings()) {
+    if (listing.status === "biedfase" && new Date(listing.deadline).getTime() <= Date.now()) {
+      store.closeListing(listing.id);
+    }
+    if (listing.status === "gesloten") {
+      try {
+        await store.revealListing(listing.id);
+        console.log(`[core] listing ${listing.id} automatisch onthuld`);
+      } catch (err) {
+        console.error(`[core] onthulling van ${listing.id} mislukt, probeer opnieuw`, err);
+      }
+    }
+  }
+}
+
+if (IS_PRODUCTION && ALLOWED_ORIGINS.includes("http://localhost:5173") && ALLOWED_ORIGINS.length === 1) {
+  console.warn("[core] WAARSCHUWING: NODE_ENV=production maar CORE_ALLOWED_ORIGINS is niet gezet, gebruikt dev-default.");
+}
+
+app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
+  if (err) {
+    console.error(err);
+    process.exit(1);
+  }
+  console.log(`[core] luistert op ${address}`);
+});

@@ -1,0 +1,105 @@
+import { describe, it, expect } from "vitest";
+import { OpenBodStore, sealBid, HashChain } from "../../src/index.js";
+
+function shortDeadline(ms: number) {
+  return new Date(Date.now() + ms).toISOString();
+}
+
+describe("End-to-end biedflow (E2, E3, E4, E7, E8)", () => {
+  it("plaatsen, sluiten, onthullen, en het logboek klopt en verifieert", async () => {
+    const store = new OpenBodStore();
+    const deadline = shortDeadline(4000);
+
+    const listing = store.createListing({
+      address: "Voorbeeldstraat 1, Amsterdam",
+      prijsVorm: "vraagprijs",
+      askingPrice: 500000,
+      verkoopmethode: "bieden_met_deadline",
+      deadline,
+      rules: { intrekkenToegestaan: true, aanpassenToegestaan: true, aantalBiedingenZichtbaar: true },
+      takeoverItems: [{ label: "Gordijnen woonkamer", status: "in_overleg" }],
+    });
+    expect(listing.status).toBe("biedfase");
+
+    const sealedA = await sealBid({ amount: 510000, conditions: [], takeover: [] }, deadline);
+    const receiptA = store.placeBid(listing.id, "sub-alice", sealedA.commitment, sealedA.ciphertext);
+    expect(receiptA.logIndex).toBe(1); // 0 = listing_opened
+
+    const sealedB = await sealBid({ amount: 495000, conditions: [{ type: "financieel" }], takeover: [] }, deadline);
+    const receiptB = store.placeBid(listing.id, "sub-bob", sealedB.commitment, sealedB.ciphertext);
+
+    // I7: het ontvangstbewijs verifieert tegen de op dat moment laatste logregel
+    const log = store.getLog(listing.id);
+    expect(log[receiptA.logIndex].entryHash).toBe(receiptA.entryHash);
+    expect(log[receiptB.logIndex].entryHash).toBe(receiptB.entryHash);
+
+    // E6-S2: alleen het aantal is zichtbaar
+    expect(store.bidCount(listing.id)).toBe(2);
+
+    // wachten tot na de deadline, dan sluiten en onthullen
+    await new Promise((r) => setTimeout(r, 5000));
+    store.closeListing(listing.id);
+    const logbook = await store.revealListing(listing.id);
+
+    expect(logbook.entries).toHaveLength(2);
+    const amounts = logbook.entries.map((e) => e.amount).sort();
+    expect(amounts).toEqual([495000, 510000]);
+    expect(logbook.entries.every((e) => e.valid)).toBe(true);
+
+    // I3/I8: de hashketen verifieert en de root klopt met de laatste entry
+    const verifyResult = HashChain.verify(logbook.log);
+    expect(verifyResult.valid).toBe(true);
+    expect(logbook.rootHash).toBe(logbook.log[logbook.log.length - 1].entryHash);
+
+    // logboek-handtekening verifieert met de gepubliceerde publieke sleutel
+    const { canonicalize } = await import("../../src/index.js");
+    const { signature, signerPublicKey, ...unsigned } = logbook;
+    expect(store.keypair.verify(canonicalize(unsigned), signature)).toBe(true);
+
+    // I11: geen motivatie en geen herleidbare identiteit in het openbare logboek
+    for (const entry of logbook.entries) {
+      expect(entry).not.toHaveProperty("motivation");
+      expect(entry).not.toHaveProperty("bidderSub");
+    }
+  }, 20000);
+
+  it("een gemanipuleerde ciphertext faalt de onthullingsvalidatie en wordt ongeldig gemarkeerd (I2)", async () => {
+    const store = new OpenBodStore();
+    const deadline = shortDeadline(4000);
+    const listing = store.createListing({
+      address: "Nepstraat 2",
+      prijsVorm: "richtprijs",
+      verkoopmethode: "inschrijving",
+      deadline,
+      rules: { intrekkenToegestaan: false, aanpassenToegestaan: false, aantalBiedingenZichtbaar: false },
+      takeoverItems: [],
+    });
+    const sealed = await sealBid({ amount: 300000, conditions: [], takeover: [] }, deadline);
+    // knoei met de commitment zodat plaintext niet meer matcht na onthulling
+    const receipt = store.placeBid(listing.id, "sub-eve", "0".repeat(64), sealed.ciphertext);
+    expect(receipt.commitment).toBe("0".repeat(64));
+
+    await new Promise((r) => setTimeout(r, 5000));
+    store.closeListing(listing.id);
+    const logbook = await store.revealListing(listing.id);
+
+    expect(logbook.entries[0].valid).toBe(false);
+    expect(logbook.entries[0].invalidReason).toMatch(/commitment/);
+  }, 20000);
+
+  it("intrekken zonder toestemming wordt geweigerd (E6-S1)", async () => {
+    const store = new OpenBodStore();
+    const deadline = shortDeadline(60000);
+    const listing = store.createListing({
+      address: "Weigerstraat 3",
+      prijsVorm: "vraagprijs",
+      verkoopmethode: "onderhandeling",
+      deadline,
+      rules: { intrekkenToegestaan: false, aanpassenToegestaan: false, aantalBiedingenZichtbaar: false },
+      takeoverItems: [],
+    });
+    const sealed = await sealBid({ amount: 250000, conditions: [], takeover: [] }, deadline);
+    const receipt = store.placeBid(listing.id, "sub-carol", sealed.commitment, sealed.ciphertext);
+    expect(() => store.withdrawBid(listing.id, receipt.bidId, "sub-carol")).toThrowError(/niet toegestaan/);
+  });
+});
