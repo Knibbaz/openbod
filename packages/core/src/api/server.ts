@@ -11,6 +11,8 @@ import {
 } from "../store.js";
 import { verifyIdentityToken } from "./identity.js";
 import {
+  awardBody,
+  awardResponse,
   bidParams,
   createListingBody,
   instanceKeyResponse,
@@ -129,7 +131,13 @@ app.post(
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
     try {
       const sub = await requireIdentity(req);
-      const receipt = store.placeBid(params.id, sub, parsed.data.commitment, parsed.data.ciphertext);
+      const receipt = store.placeBid(
+        params.id,
+        sub,
+        parsed.data.commitment,
+        parsed.data.ciphertext,
+        parsed.data.identityEnvelope,
+      );
       return sendValidated(reply, receiptResponse, receipt, 201);
     } catch (err) {
       return handleDomainError(err, reply);
@@ -147,7 +155,14 @@ app.patch(
     if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
     try {
       const sub = await requireIdentity(req);
-      const receipt = store.adjustBid(params.id, params.bidId, sub, parsed.data.commitment, parsed.data.ciphertext);
+      const receipt = store.adjustBid(
+        params.id,
+        params.bidId,
+        sub,
+        parsed.data.commitment,
+        parsed.data.ciphertext,
+        parsed.data.identityEnvelope,
+      );
       return sendValidated(reply, receiptResponse, receipt);
     } catch (err) {
       return handleDomainError(err, reply);
@@ -180,6 +195,33 @@ app.post(
     try {
       const listing = store.closeListing(params.id);
       return sendValidated(reply, listingPublicResponse, listing);
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+/**
+ * Gunning. Geeft alleen de identiteitsenvelop van het gekozen bod terug — een
+ * blob die deze server niet kan openen, want de sleutel ligt bij de verkoper.
+ *
+ * Bekende beperking van de MVP: er is nog geen verkopersrol, dus dit endpoint
+ * controleert alleen dát je ingelogd bent, niet dát je de verkoper bent. Dat is
+ * hier minder erg dan het lijkt, want wie geen sleutel heeft krijgt een envelop
+ * die hij niet kan lezen, en de gunning zelf staat onuitwisbaar in het logboek.
+ * Een echte instantie hoort hier bezit van de private sleutel te laten bewijzen.
+ */
+app.post(
+  "/listings/:id/award",
+  { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    const parsed = awardBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      await requireIdentity(req);
+      return sendValidated(reply, awardResponse, store.awardListing(params.id, parsed.data.bidId));
     } catch (err) {
       return handleDomainError(err, reply);
     }

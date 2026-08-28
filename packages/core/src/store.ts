@@ -24,6 +24,8 @@ export interface CreateListingInput {
   deadline: string;
   rules: ListingRules;
   takeoverItems: Omit<OvernameItem, "itemId">[];
+  /** JWK van de verkoper; bieders versleutelen hun identiteit hiernaartoe (I12). */
+  sellerPublicKey?: string;
 }
 
 export class ListingNotFoundError extends Error {}
@@ -65,6 +67,7 @@ export class OpenBodStore {
       takeoverItems: input.takeoverItems.map((item) => ({ ...item, itemId: randomUUID() })),
       status: "biedfase",
       createdAt: new Date().toISOString(),
+      sellerPublicKey: input.sellerPublicKey,
     };
     const chain = new HashChain();
     chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline })));
@@ -98,7 +101,13 @@ export class OpenBodStore {
     return this.receiptFor(this.record(listingId), sealed, sealed.logIndex);
   }
 
-  placeBid(listingId: string, bidderSub: string, commitment: string, ciphertext: string): BidReceipt {
+  placeBid(
+    listingId: string,
+    bidderSub: string,
+    commitment: string,
+    ciphertext: string,
+    identityEnvelope?: string,
+  ): BidReceipt {
     const rec = this.record(listingId);
     this.assertBiedfase(rec);
     // Eén lopend bod per bieder per woning. Zonder deze regel kan één account het
@@ -122,12 +131,20 @@ export class OpenBodStore {
       createdAt: now,
       updatedAt: now,
       logIndex: entry.index,
+      identityEnvelope,
     };
     rec.bids.set(bidId, sealed);
     return this.receiptFor(rec, sealed, entry.index);
   }
 
-  adjustBid(listingId: string, bidId: string, bidderSub: string, commitment: string, ciphertext: string): BidReceipt {
+  adjustBid(
+    listingId: string,
+    bidId: string,
+    bidderSub: string,
+    commitment: string,
+    ciphertext: string,
+    identityEnvelope?: string,
+  ): BidReceipt {
     const rec = this.record(listingId);
     this.assertBiedfase(rec);
     if (!rec.listing.rules.aanpassenToegestaan) {
@@ -145,6 +162,7 @@ export class OpenBodStore {
       version: existing.version + 1,
       updatedAt: new Date().toISOString(),
       logIndex: entry.index,
+      identityEnvelope: identityEnvelope ?? existing.identityEnvelope,
     };
     rec.bids.set(bidId, updated);
     return this.receiptFor(rec, updated, entry.index);
@@ -214,6 +232,40 @@ export class OpenBodStore {
     rec.listing.status = "onthuld";
     rec.logbook = generatePublicLogbook(rec.listing, revealed, rec.chain.all(), this.keypair);
     return rec.logbook;
+  }
+
+  /**
+   * Gunning (protocol.md §4, §5a). Legt de keuze vast en geeft uitsluitend de
+   * identiteitsenvelop van het gekozen bod vrij. De instantie kan die envelop
+   * zelf niet openen — alleen de verkoper heeft de sleutel — maar dát zij is
+   * vrijgegeven wordt gelogd, zodat achteraf zichtbaar is wanneer de identiteit
+   * van welke bieder beschikbaar kwam (I12).
+   */
+  awardListing(listingId: string, bidId: string): { bidId: string; identityEnvelope?: string; logbook: Logbook } {
+    const rec = this.record(listingId);
+    if (rec.listing.status !== "onthuld") {
+      throw new InvalidTransitionError(`kan niet gunnen vanuit status ${rec.listing.status}`);
+    }
+    const sealed = rec.bids.get(bidId);
+    if (!sealed || sealed.withdrawn) {
+      throw new RuleViolationError("bod niet gevonden of ingetrokken");
+    }
+    const revealed = rec.revealed?.find((b) => b.bidId === bidId);
+    if (!revealed?.valid) {
+      throw new RuleViolationError("er kan alleen gegund worden aan een geldig onthuld bod");
+    }
+
+    rec.chain.append("gegund", sha256Hex(canonicalize({ listingId, bidId })));
+    if (sealed.identityEnvelope) {
+      rec.chain.append("identiteit_vrijgegeven", sha256Hex(canonicalize({ listingId, bidId })));
+    }
+    rec.listing.awardedBidId = bidId;
+    rec.listing.status = "onherroepelijk";
+    // Het logboek is bij de onthulling gegenereerd en mist de gunningsregels;
+    // opnieuw genereren houdt het logboek gelijk aan de keten.
+    rec.logbook = generatePublicLogbook(rec.listing, rec.revealed ?? [], rec.chain.all(), this.keypair);
+
+    return { bidId, identityEnvelope: sealed.identityEnvelope, logbook: rec.logbook };
   }
 
   getRevealed(listingId: string): RevealedBid[] {

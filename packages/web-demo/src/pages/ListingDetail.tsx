@@ -10,6 +10,7 @@ import {
   type TakeoverItem,
 } from "../lib/api";
 import { sealBid, type OvernameChoice, type Voorbehoud } from "../lib/seal";
+import { loadSellerKey, openIdentity, sealIdentity, type BidderIdentity } from "../lib/identity-envelope";
 import { verifyHashChainInBrowser } from "../lib/verify";
 
 const VOORBEHOUD_LABELS: { type: Voorbehoud["type"]; label: string }[] = [
@@ -76,6 +77,10 @@ export function ListingDetail() {
   const [takeover, setTakeover] = useState<Record<string, TakeoverState>>({});
   const [sealing, setSealing] = useState(false);
   const [myBid, setMyBid] = useState<MyBid | null>(null);
+  const [bidderName, setBidderName] = useState("");
+  const [bidderContact, setBidderContact] = useState("");
+  const [awardedIdentity, setAwardedIdentity] = useState<BidderIdentity | null>(null);
+  const [awarding, setAwarding] = useState(false);
 
   const [chainCheck, setChainCheck] = useState<{ valid: boolean; firstBrokenIndex?: number } | null>(null);
 
@@ -171,16 +176,25 @@ export function ListingDetail() {
       setError("Vul een bedrag in bij elk item waarvoor je een eigen bod doet.");
       return;
     }
+    if (listing.sellerPublicKey && !bidderName.trim()) {
+      setError("Vul je naam in. Die gaat versleuteld mee en is alleen leesbaar voor de verkoper, ná gunning.");
+      return;
+    }
     setSealing(true);
     setError(null);
     try {
+      // Twee gescheiden versleutelingen: het bod naar de deadline (iedereen mag het
+      // dan lezen), de identiteit naar de verkoper (alleen hij mag het ooit lezen).
+      const identityEnvelope = listing.sellerPublicKey
+        ? await sealIdentity(listing.sellerPublicKey, { name: bidderName.trim(), contact: bidderContact.trim() })
+        : undefined;
       const { commitment, ciphertext } = await sealBid(payload, listing.deadline);
       // Aanpassen is een nieuwe verzegeling van het hele pakket, geen patch op de
       // inhoud: de core kan het oude bod niet lezen, dus er valt niets te wijzigen
       // behalve het geheel. Het logboek houdt beide versies vast.
       const res = myBid
-        ? await coreApi.adjustBid(id, myBid.bidId, commitment, ciphertext)
-        : await coreApi.placeBid(id, commitment, ciphertext);
+        ? await coreApi.adjustBid(id, myBid.bidId, commitment, ciphertext, identityEnvelope)
+        : await coreApi.placeBid(id, commitment, ciphertext, identityEnvelope);
       setMyBid({ ...res, version: (myBid?.version ?? 0) + 1, createdAt: myBid?.createdAt ?? res.timestamp, updatedAt: res.timestamp });
     } catch (err) {
       setError(String(err));
@@ -200,6 +214,25 @@ export function ListingDetail() {
     }
   }
 
+  /** Gunnen aan één bod, en pas dán de identiteit van die bieder openen. */
+  async function onAward(bidId: string) {
+    if (!id || !listing) return;
+    const sellerKey = loadSellerKey(listing.id);
+    setAwarding(true);
+    setError(null);
+    try {
+      const result = await coreApi.award(id, bidId);
+      setLogbook(result.logbook);
+      if (result.identityEnvelope && sellerKey) {
+        setAwardedIdentity(await openIdentity(sellerKey, result.identityEnvelope));
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setAwarding(false);
+    }
+  }
+
   async function onVerify() {
     if (!logbook) return;
     const result = await verifyHashChainInBrowser(logbook.log);
@@ -214,6 +247,8 @@ export function ListingDetail() {
   if (!listing) return <p>Laden…</p>;
 
   const biedbareItems = listing.takeoverItems.filter((item) => choicesFor(item.status).length > 0);
+  // Je bent hier de verkoper als je de private sleutel van deze woning hebt.
+  const isSeller = loadSellerKey(listing.id) !== null;
 
   return (
     <div>
@@ -309,6 +344,24 @@ export function ListingDetail() {
             Je hele bod — bedrag, datums, voorbehouden, overname en motivatie — wordt in deze browser versleuteld naar
             de deadline. Deze server kan het pas erna lezen.
           </p>
+          {listing.sellerPublicKey && (
+            <>
+              <h3>Wie je bent</h3>
+              <p>
+                Je naam wordt apart versleuteld naar de verkoper. Deze server kan hem niet lezen, de makelaar ook niet,
+                en de verkoper pas op het moment dat hij aan jou gunt. In het openbare logboek verschijnt hij nooit.
+              </p>
+              <label>
+                Naam
+                <input value={bidderName} onChange={(e) => setBidderName(e.target.value)} />
+              </label>
+              <label>
+                Contact (optioneel, bijvoorbeeld e-mail of telefoon)
+                <input value={bidderContact} onChange={(e) => setBidderContact(e.target.value)} />
+              </label>
+            </>
+          )}
+          <h3>Je bod</h3>
           <label>
             Bedrag (EUR)
             <input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
@@ -427,6 +480,7 @@ export function ListingDetail() {
                   <th>Voorbehouden</th>
                   <th>Overname</th>
                   <th>Geldig</th>
+                  {isSeller && <th>Gunning</th>}
                 </tr>
               </thead>
               <tbody>
@@ -459,6 +513,19 @@ export function ListingDetail() {
                               .join("; ")}
                     </td>
                     <td>{e.valid ? "ja" : `nee (${e.invalidReason})`}</td>
+                    {isSeller && (
+                      <td>
+                        {listing.awardedBidId === e.bidId ? (
+                          <strong>gegund</strong>
+                        ) : listing.awardedBidId || !e.valid ? (
+                          "—"
+                        ) : (
+                          <button onClick={() => onAward(e.bidId)} disabled={awarding}>
+                            Gun aan deze bieder
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -466,8 +533,21 @@ export function ListingDetail() {
           </div>
           <p>
             De motivatie staat bewust niet in dit logboek: die gaat alleen naar de verkoper, niet naar de andere
-            bieders.
+            bieders. Namen staan er ook niet in, en zijn tot de gunning voor niemand leesbaar.
           </p>
+          {awardedIdentity && (
+            <p>
+              Identiteit vrijgegeven na gunning: <strong>{awardedIdentity.name}</strong>
+              {awardedIdentity.contact && ` — ${awardedIdentity.contact}`}. Dat deze vrijgave plaatsvond, staat nu als
+              aparte regel in het logboek hierboven.
+            </p>
+          )}
+          {isSeller && listing.awardedBidId && !awardedIdentity && (
+            <p>
+              Er is gegund, maar de identiteit kon niet geopend worden. Dat gebeurt als deze browser de sleutel van
+              deze woning niet meer heeft, of als de bieder geen naam meestuurde.
+            </p>
+          )}
           <h3>Zelf controleren</h3>
           <p>
             Elke regel hierboven bevat de hash van de regel ervóór. Wie achteraf iets wijzigt, invoegt of weghaalt,

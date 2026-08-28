@@ -67,6 +67,14 @@ export interface Listing {
   takeoverItems: OvernameItem[];
   status: ListingStatus;
   createdAt: string;
+  /**
+   * Publieke sleutel van de verkoper (JWK), waarmee bieders hun identiteit
+   * versleutelen (protocol.md §5a, I12). De bijbehorende private sleutel
+   * blijft bij de verkoper: de instantie kan identiteiten dus niet lezen.
+   */
+  sellerPublicKey?: string;
+  /** Gezet zodra er gegund is; verwijst naar het gekozen bod. */
+  awardedBidId?: string;
 }
 
 /** Wat de core daadwerkelijk opslaat vóór de onthulling: nooit leesbare inhoud. */
@@ -82,6 +90,12 @@ export interface SealedBid {
   updatedAt: string;
   /** Index van de logregel die dit bod het laatst vastlegde (plaatsen of aanpassen). */
   logIndex: number;
+  /**
+   * Ondoorzichtige, naar de verkoper versleutelde identiteit van de bieder
+   * (protocol.md §5a). De instantie bewaart dit maar kan het niet openen, en
+   * geeft het uitsluitend vrij bij gunning van dít bod.
+   */
+  identityEnvelope?: string;
 }
 
 export interface RevealedBid extends BidPayload {
@@ -98,7 +112,9 @@ export type LogEntryType =
   | "bid_adjusted"
   | "bid_withdrawn"
   | "listing_closed"
-  | "bid_revealed";
+  | "bid_revealed"
+  | "gegund"
+  | "identiteit_vrijgegeven";
 
 export interface LogEntry {
   index: number;

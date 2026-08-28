@@ -56,16 +56,16 @@ CORS-configuratie.
 
 ## MVP-scope en bewuste vereenvoudigingen
 
-Gebouwd (zie `spec/backlog.md` §"Prioritering voor de demo"): woning aanmaken, magic-link
-login, verzegeld bod, automatische onthulling op de deadline, hashketen-logboek,
-aantal-zichtbaar-regel, gunningsoverzicht (ruwe data via de API), en de losse verifier.
+Gebouwd (zie `spec/backlog.md` §"Prioritering voor de demo"): woning aanmaken met eigen
+spelregels en lijst roerende zaken, magic-link login, verzegeld bod met het volledige
+pakket uit README §6, één lopend bod per bieder dat je zelf kunt inzien, aanpassen en
+intrekken, anoniem bieden met vrijgave bij gunning, automatische onthulling op de
+deadline, hashketen-logboek, aantal-zichtbaar-regel, en de losse verifier.
 
-Let op het verschil tussen core en frontend bij de inhoud van een bod. De core en het
-protocol ondersteunen het volledige pakket uit README §6 — bedrag, opleverdatum,
-geldigheidsduur, voorbehouden, motivatie en overname-keuzes — en `bidPayloadSchema`
-valideert dat na de onthulling opnieuw. Het biedformulier in `web-demo` vraagt op dit
-moment alleen om bedrag en motivatie. Wie het hele pakket wil zien, moet dus via de API
-of via `sealBid` uit `@openbod/core` werken; het formulier loopt achter op de core.
+Concepten worden bewust niet serverside bewaard. Zou de instantie een concept opslaan,
+dan weet zij vóór de deadline dat iemand een bod voorbereidt — precies de
+informatievoorsprong die dit project wil afschaffen. Een concept hoort dus in de browser
+van de bieder te blijven en komt daarom niet in het logboek.
 
 Nog niet gebouwd (zie backlog, "Later"): white-label opmaak, publieke transparency-log
 (anchoring), pluggable iDIN-identiteit, certificering/trust-list, en een tweede reskinbare
@@ -84,3 +84,10 @@ Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
   is. Werkt voor de demo; productie gebruikt een betrouwbare scheduler.
 - **Geen anchoring en geen certificering.** Alleen de instantie zelf ondertekent; er is nog
   geen gedeelde transparency-log of toetser (ARCHITECTURE.md §6.2 en §6.3).
+- **Geen verkopersrol.** Woningen aanmaken en gunnen vragen geen verkopersauthenticatie.
+  Bij gunning valt dat mee: wie de sleutel niet heeft, krijgt een envelop die hij niet kan
+  openen, en de gunning staat onuitwisbaar in het logboek. Een echte instantie hoort hier
+  bezit van de private sleutel te laten bewijzen.
+- **Sleutel van de verkoper in localStorage.** Kwijt is kwijt, en dan blijft de identiteit
+  van de winnende bieder onleesbaar. Productie geeft hier een herstelpad — maar nooit een
+  sleutel die de operator ook heeft, want dan vervalt de hele garantie.

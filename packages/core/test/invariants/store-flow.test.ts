@@ -155,6 +155,48 @@ describe("End-to-end biedflow (E2, E3, E4, E7, E8)", () => {
     expect(HashChain.verify(first.log).valid).toBe(true);
   }, 20000);
 
+  it("gunning geeft alleen de envelop van het gekozen bod vrij en logt dat (I12)", async () => {
+    const store = new OpenBodStore();
+    const deadline = shortDeadline(4000);
+    const listing = store.createListing({
+      address: "Gunstraat 7",
+      prijsVorm: "vraagprijs",
+      verkoopmethode: "inschrijving",
+      deadline,
+      rules: { intrekkenToegestaan: false, aanpassenToegestaan: false, aantalBiedingenZichtbaar: true },
+      takeoverItems: [],
+      sellerPublicKey: "jwk-van-de-verkoper",
+    });
+
+    const winner = await sealBid({ amount: 520000, conditions: [], takeover: [] }, deadline);
+    const winnerReceipt = store.placeBid(listing.id, "sub-win", winner.commitment, winner.ciphertext, "envelop-win");
+    const loser = await sealBid({ amount: 480000, conditions: [], takeover: [] }, deadline);
+    store.placeBid(listing.id, "sub-lose", loser.commitment, loser.ciphertext, "envelop-lose");
+
+    // vóór de onthulling valt er niets te gunnen
+    expect(() => store.awardListing(listing.id, winnerReceipt.bidId)).toThrowError(/kan niet gunnen/);
+
+    await new Promise((r) => setTimeout(r, 5000));
+    store.closeListing(listing.id);
+    await store.revealListing(listing.id);
+
+    const result = store.awardListing(listing.id, winnerReceipt.bidId);
+    expect(result.identityEnvelope).toBe("envelop-win");
+
+    // de envelop van de verliezer komt nergens in de uitkomst voor
+    expect(JSON.stringify(result.logbook)).not.toContain("envelop-lose");
+    expect(JSON.stringify(result.logbook)).not.toContain("envelop-win");
+
+    const types = result.logbook.log.map((e) => e.type);
+    expect(types).toContain("gegund");
+    expect(types).toContain("identiteit_vrijgegeven");
+    expect(HashChain.verify(result.logbook.log).valid).toBe(true);
+    expect(store.getListing(listing.id).status).toBe("onherroepelijk");
+
+    // en gunnen kan maar één keer
+    expect(() => store.awardListing(listing.id, winnerReceipt.bidId)).toThrowError(/kan niet gunnen/);
+  }, 25000);
+
   it("intrekken zonder toestemming wordt geweigerd (E6-S1)", async () => {
     const store = new OpenBodStore();
     const deadline = shortDeadline(60000);

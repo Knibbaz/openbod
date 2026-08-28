@@ -50,6 +50,12 @@ De biedingen worden versleuteld met een timelock, gekoppeld aan een publieke ran
 
 Elke gebeurtenis (bod geplaatst, aangepast, ingetrokken, geopend, gesloten, onthuld) wordt een regel in een append-only logboek. Elke regel bevat de hash van de vorige, dus de keten breekt zichtbaar zodra iemand iets in het verleden verandert. Periodiek publiceer je alleen de root-hash van het logboek op een publieke plek, als onafhankelijk bewijs van integriteit. Er komen geen persoonsgegevens op die publieke plek, alleen hashes. Dat houdt het AVG-proof.
 
+### Anoniem bieden tot de gunning
+
+Verzegelen van bedragen is niet genoeg. Als de makelaar bij de onthulling ziet wíe er geboden heeft, kan hij nog steeds sturen — alleen twee minuten later. Daarom reist de identiteit van de bieder niet mee in het bod, maar in een aparte envelop die versleuteld is naar een sleutel van de verkoper. De instantie en de makelaar hebben die sleutel niet en kunnen de naam dus op geen enkel moment lezen. Bij gunning geeft het systeem uitsluitend de envelop van het gekozen bod vrij, en legt die vrijgave vast als eigen regel in het logboek.
+
+Wees hier precies over, want het verschil doet ertoe. Dat operator en makelaar de identiteit nooit kunnen lezen, is wiskundig afgedwongen. Dat de verkoper pas bij gunning kijkt, is dat niet: hij houdt zijn sleutel de hele tijd. Die grens is procedureel en gelogd, en het protocol zegt dat ook met zoveel woorden in plaats van het weg te laten.
+
 ### Identiteit als losse naad
 
 Login is een aparte backend die de biedlogica niet raakt. Die backend authenticeert de gebruiker en geeft een ondertekend token af (OIDC-stijl) met een subject-claim, dat de bied-core verifieert. In de demo is de loginmethode een magic link (verificatie van een e-mailadres, genoeg om het protocol te tonen). Later federeert hier een zwaarder middel in.

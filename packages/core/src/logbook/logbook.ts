@@ -4,6 +4,8 @@ import { sha256Hex } from "../commit/hash.js";
 import type { InstanceKeypair } from "../log/signing.js";
 
 export interface PublicLogbookEntry {
+  /** Willekeurige id van het bod. Nodig om aan een bod te kunnen gunnen; niet herleidbaar tot een persoon. */
+  bidId: string;
   bidderRef: string;
   amount: number;
   handoverDate?: string;
@@ -31,7 +33,8 @@ export function generatePublicLogbook(
   log: LogEntry[],
   keypair: InstanceKeypair,
 ): Logbook {
-  const entries: PublicLogbookEntry[] = revealed.map((bid, i) => ({
+  const entries: PublicLogbookEntry[] = revealed.map((bid) => ({
+    bidId: bid.bidId,
     bidderRef: `bieder-${sha256Hex(bid.bidderSub).slice(0, 8)}`,
     amount: bid.amount,
     handoverDate: bid.handoverDate,

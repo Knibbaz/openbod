@@ -24,6 +24,8 @@ export interface Listing {
   status: "aangemaakt" | "biedfase" | "gesloten" | "onthuld" | "onherroepelijk";
   createdAt: string;
   bidCount?: number;
+  sellerPublicKey?: string;
+  awardedBidId?: string;
 }
 
 export interface BidReceipt {
@@ -56,6 +58,7 @@ export interface LogEntry {
 export interface Logbook {
   listing: Pick<Listing, "id" | "address" | "prijsVorm" | "verkoopmethode" | "deadline">;
   entries: {
+    bidId: string;
     bidderRef: string;
     amount: number;
     handoverDate?: string;
@@ -133,19 +136,34 @@ export const coreApi = {
     });
     return json<Listing>(res);
   },
-  async placeBid(listingId: string, commitment: string, ciphertext: string) {
+  async placeBid(listingId: string, commitment: string, ciphertext: string, identityEnvelope?: string) {
     const res = await fetch(`${CORE_URL}/listings/${listingId}/bids`, {
       method: "POST",
       headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ commitment, ciphertext }),
+      body: JSON.stringify({ commitment, ciphertext, identityEnvelope }),
     });
     return json<BidReceipt>(res);
   },
-  async adjustBid(listingId: string, bidId: string, commitment: string, ciphertext: string) {
+  /** Gunning: de core geeft alleen de envelop van dit bod terug, die hij zelf niet kan openen. */
+  async award(listingId: string, bidId: string) {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/award`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ bidId }),
+    });
+    return json<{ bidId: string; identityEnvelope?: string; logbook: Logbook }>(res);
+  },
+  async adjustBid(
+    listingId: string,
+    bidId: string,
+    commitment: string,
+    ciphertext: string,
+    identityEnvelope?: string,
+  ) {
     const res = await fetch(`${CORE_URL}/listings/${listingId}/bids/${bidId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ commitment, ciphertext }),
+      body: JSON.stringify({ commitment, ciphertext, identityEnvelope }),
     });
     return json<BidReceipt>(res);
   },

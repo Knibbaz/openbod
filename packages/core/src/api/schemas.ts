@@ -19,12 +19,20 @@ export const sha256HexSchema = z
 // voorkomt dat één bod onevenredig veel geheugen of decryptietijd kost (DoS).
 export const ciphertextSchema = z.string().min(1).max(20_000);
 
+// De identiteitsenvelop is versleuteld naar de verkoper en voor de instantie
+// ondoorzichtig (protocol.md §5a). Alleen de vorm en een bovengrens worden
+// gecontroleerd; de inhoud kan hier per definitie niet gelezen worden.
+export const identityEnvelopeSchema = z.string().min(1).max(8_000);
+
 export const sealedBidBody = z
   .object({
     commitment: sha256HexSchema,
     ciphertext: ciphertextSchema,
+    identityEnvelope: identityEnvelopeSchema.optional(),
   })
   .strict(); // weigert onbekende velden zoals "amount" — geen plaintext mag meekomen (I1)
+
+export const awardBody = z.object({ bidId: uuidSchema }).strict();
 
 export const createListingBody = z.object({
   address: safeText(200, 3),
@@ -46,6 +54,9 @@ export const createListingBody = z.object({
       }),
     )
     .max(100),
+  // JWK van de verkoper. De bijbehorende private sleutel blijft bij de verkoper;
+  // die hoort hier nooit binnen te komen (protocol.md §5a).
+  sellerPublicKey: z.string().min(1).max(2_000).optional(),
 });
 
 /**
@@ -80,6 +91,8 @@ export const listingPublicResponse = z.object({
   status: z.enum(["aangemaakt", "biedfase", "gesloten", "onthuld", "onherroepelijk"]),
   createdAt: z.string(),
   bidCount: z.number().int().nonnegative().optional(),
+  sellerPublicKey: z.string().optional(),
+  awardedBidId: uuidSchema.optional(),
 });
 
 export const listingListResponse = z.array(listingPublicResponse);
@@ -98,7 +111,16 @@ export const receiptResponse = z.object({
 const logEntryResponse = z.object({
   index: z.number().int().nonnegative(),
   timestamp: z.string(),
-  type: z.enum(["listing_opened", "bid_placed", "bid_adjusted", "bid_withdrawn", "listing_closed", "bid_revealed"]),
+  type: z.enum([
+    "listing_opened",
+    "bid_placed",
+    "bid_adjusted",
+    "bid_withdrawn",
+    "listing_closed",
+    "bid_revealed",
+    "gegund",
+    "identiteit_vrijgegeven",
+  ]),
   payloadHash: z.string(),
   prevHash: z.string(),
   entryHash: z.string(),
@@ -114,6 +136,7 @@ export const logbookResponse = z.object({
   }),
   entries: z.array(
     z.object({
+      bidId: uuidSchema,
       bidderRef: z.string(),
       amount: z.number(),
       handoverDate: z.string().optional(),
@@ -141,6 +164,13 @@ export const proofResponse = z.object({
 
 export const instanceKeyResponse = z.object({
   publicKeyPem: z.string(),
+});
+
+/** Alleen de envelop van het gegunde bod gaat terug; de instantie kan hem zelf niet openen. */
+export const awardResponse = z.object({
+  bidId: uuidSchema,
+  identityEnvelope: identityEnvelopeSchema.optional(),
+  logbook: logbookResponse,
 });
 
 /**

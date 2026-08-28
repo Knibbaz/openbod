@@ -32,6 +32,7 @@ Dit is de kern. Elke invariant is een eigenschap die altijd moet gelden en die m
 - **I9 Regeltransparantie.** De procesregels (intrekken, aanpassen, zichtbaarheid van het aantal, wie inzage heeft) staan vast bij het aanmaken van de woning, zijn zichtbaar, en kunnen niet halverwege veranderen.
 - **I10 Identiteitsonafhankelijkheid.** De integriteitsgaranties gelden ongeacht de gebruikte identiteitsmethode.
 - **I11 Privacy.** Motivatie en persoonsgegevens komen niet in het openbare logboek. In de gedeelde publieke log staan alleen hashes.
+- **I12 Anonimiteit tot gunning.** De identiteit van een bieder is voor de operator en de makelaar op geen enkel moment leesbaar, en is voor de verkoper pas beschikbaar nadat hij aan die bieder gunt. Vrijgave is een gelogde gebeurtenis.
 
 ## 4. Fasen (toestandsmachine)
 
@@ -57,6 +58,20 @@ Zij `bod` de canonieke serialisatie van het volledige biedpakket (bedrag, voorbe
 - Onthulling: op de deadline geeft de beacon de rondesleutel vrij, waarna `bod || salt = tlock_decrypt(ciphertext)`. De instantie controleert `H(bod || salt) == commitment`. Bij mismatch wordt het bod ongeldig gemarkeerd en gelogd.
 
 De canonieke serialisatie moet deterministisch zijn, zodat de hash reproduceerbaar is.
+
+## 5a. Identiteitsenvelop (anoniem bieden)
+
+De timelock maakt een bod op de deadline voor iedereen leesbaar. De identiteit van de bieder hoort daar juist niet bij: die mag de operator nooit zien, en de verkoper pas bij gunning. Zij reist daarom in een tweede, apart versleutelde envelop naast het bod, niet erin.
+
+Bij het aanmaken van de woning genereert de verkoper een sleutelpaar. De publieke sleutel staat bij de woning; de private sleutel verlaat het apparaat van de verkoper niet en komt dus nooit bij de operator.
+
+- Envelop: `identityEnvelope = enc(pk_verkoper, {naam, contact})`, versleuteld bij de bieder.
+- De instantie slaat de envelop ondoorzichtig op. Zij komt niet in enige publieke weergave en niet in het biedlogboek.
+- Bij gunning geeft de instantie uitsluitend de envelop van het gegunde bod vrij, en logt dat als `identiteit_vrijgegeven`.
+
+**Wat dit wel en niet garandeert.** Cryptografisch afgedwongen is dat operator en makelaar de identiteit nooit kunnen lezen: zij hebben de sleutel niet, op geen enkel moment. Niet cryptografisch afgedwongen is dat de verkoper pas bij gunning kijkt — hij houdt de private sleutel de hele tijd, dus hij kán eerder ontsleutelen wat hij in handen krijgt. Dat "pas bij gunning" is dus een procedurele en gelogde garantie, geen wiskundige. Wie dat wel wiskundig wil, heeft een derde partij of een threshold-schema nodig; dat is een bewuste toekomstige uitbreiding, geen stilzwijgende aanname.
+
+Deze eerlijkheid is opzettelijk: een standaard die meer belooft dan zij afdwingt, is precies het probleem dat dit project wil oplossen.
 
 ## 6. Logboek
 
@@ -85,9 +100,11 @@ De core ontvangt een ondertekend token met minimaal `iss, sub, aud, assurance_le
 | Kwaadwillende bieder | Beweren dat zijn bod ontbrak | I7 (ontvangstbewijs plus inclusiebewijs) |
 | Instantie | Vals claimen dat zij conform en actueel is | Certificering, trust-list, anchoring |
 | Netwerk of derde | Inhoud van biedingen onderscheppen | I1 (verzegeld bij de bieder) |
+| Oneerlijke makelaar | Weten wie er biedt, en daarop sturen | I12 (envelop versleuteld naar de verkoper, niet naar de instantie) |
+| Verkoper | Identiteiten inzien vóór gunning | Slechts deels: gelogde vrijgave maakt het zichtbaar, niet onmogelijk (zie §5a) |
 
 Niet afgedekt zonder extra maatregelen: bewijzen dat een draaiende server exact de gemeten code uitvoert. Daarvoor is remote attestation nodig. Tot dan leunt het bewijs op certificering, anchoring en de ontvangstbewijzen van gebruikers.
 
 ## 10. Conformiteit
 
-Een implementatie is conform als zij voor elke invariant I1 tot en met I11 de bijbehorende test in de conformance-suite haalt, en de NTA 8061-velden en verkoopmethoden ondersteunt. Falen op één invariant betekent niet conform.
+Een implementatie is conform als zij voor elke invariant I1 tot en met I12 de bijbehorende test in de conformance-suite haalt, en de NTA 8061-velden en verkoopmethoden ondersteunt. Falen op één invariant betekent niet conform.

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { coreApi, type OvernameStatus } from "../lib/api";
+import { generateSellerKeypair, saveSellerKey } from "../lib/identity-envelope";
 
 const STATUS_OPTIONS: { value: OvernameStatus; label: string }[] = [
   { value: "blijft_achter", label: "Blijft achter" },
@@ -42,6 +43,10 @@ export function CreateListing() {
     setError(null);
     try {
       const deadline = new Date(Date.now() + minutesFromNow * 60_000).toISOString();
+      // Het sleutelpaar van de verkoper ontstaat hier, in zijn eigen browser. Alleen
+      // de publieke helft gaat mee naar de server; met de private helft kan hij straks
+      // de identiteit van de bieder aan wie hij gunt openen, en niemand anders.
+      const { publicJwk, privateJwk } = await generateSellerKeypair();
       const listing = await coreApi.createListing({
         address,
         prijsVorm: "vraagprijs",
@@ -57,7 +62,9 @@ export function CreateListing() {
             // Alleen een vast bedrag heeft een bedrag; bij "in overleg" bepaalt de bieder.
             amount: item.status === "gevraagd_bedrag" && item.amount ? Number(item.amount) : undefined,
           })),
+        sellerPublicKey: publicJwk,
       });
+      saveSellerKey(listing.id, privateJwk);
       navigate(`/woningen/${listing.id}`);
     } catch (err) {
       setError(String(err));
@@ -69,6 +76,11 @@ export function CreateListing() {
   return (
     <div>
       <h1>Woning aanmaken</h1>
+      <p>
+        Bij het aanmaken genereert je browser een sleutelpaar. Bieders versleutelen hun naam daarnaartoe, zodat deze
+        server en de makelaar nooit zien wie er biedt. Pas als je gunt, kun jij die naam openen — met de sleutel die in
+        deze browser blijft. Raak je die kwijt, dan blijft de naam onleesbaar.
+      </p>
       <form onSubmit={onSubmit}>
         <label>
           Adres
