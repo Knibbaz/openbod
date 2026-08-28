@@ -1,0 +1,39 @@
+# Eén image voor beide backend-services. Welke er draait, bepaalt het
+# `command` in docker-compose.yml: core of identity. Ze delen de build,
+# maar draaien als aparte processen, precies zoals ARCHITECTURE.md §5
+# voorschrijft: de core bevat geen loginlogica.
+
+FROM node:22-alpine AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/identity/package.json packages/identity/
+COPY packages/verifier/package.json packages/verifier/
+COPY packages/web-demo/package.json packages/web-demo/
+RUN npm ci --ignore-scripts
+
+COPY packages/core packages/core
+COPY packages/identity packages/identity
+RUN npm run build --workspace packages/core \
+ && npm run build --workspace packages/identity
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Alle workspace-manifesten zijn nodig: npm ci controleert de lockfile tegen
+# de volledige workspace, ook als we maar twee pakketten installeren.
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/identity/package.json packages/identity/
+COPY packages/verifier/package.json packages/verifier/
+COPY packages/web-demo/package.json packages/web-demo/
+RUN npm ci --omit=dev --ignore-scripts --workspace packages/core --workspace packages/identity \
+ && npm cache clean --force
+
+COPY --from=build /app/packages/core/dist packages/core/dist
+COPY --from=build /app/packages/identity/dist packages/identity/dist
+
+USER node
+CMD ["node", "packages/core/dist/api/server.js"]

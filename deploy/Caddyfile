@@ -1,0 +1,34 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	encode gzip zstd
+
+	# handle_path stript de prefix, zodat de services hun eigen routes
+	# ongewijzigd houden (/listings, /magic-link, /.well-known/jwks.json).
+	handle_path /api/core/* {
+		reverse_proxy core:4000
+	}
+
+	handle_path /api/identity/* {
+		reverse_proxy identity:4001
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

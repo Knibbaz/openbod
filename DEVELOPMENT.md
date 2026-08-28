@@ -48,12 +48,24 @@ node packages/verifier/dist/cli.js logbook logboek.json
 
 `logboek.json` kun je downloaden vanaf de detailpagina van een onthulde woning in de demo.
 
+## Een publieke instantie draaien
+
+Zie `deploy/README.md`. Kort: `docker compose -f deploy/docker-compose.yml up -d --build`
+met `PUBLIC_URL` gezet. Drie containers achter één Caddy-proxy, dus één origin en geen
+CORS-configuratie.
+
 ## MVP-scope en bewuste vereenvoudigingen
 
 Gebouwd (zie `spec/backlog.md` §"Prioritering voor de demo"): woning aanmaken, magic-link
-login, verzegeld bod met voorbehouden/motivatie/overname, automatische onthulling op de
-deadline, hashketen-logboek, aantal-zichtbaar-regel, gunningsoverzicht (ruwe data via de
-API), en de losse verifier.
+login, verzegeld bod, automatische onthulling op de deadline, hashketen-logboek,
+aantal-zichtbaar-regel, gunningsoverzicht (ruwe data via de API), en de losse verifier.
+
+Let op het verschil tussen core en frontend bij de inhoud van een bod. De core en het
+protocol ondersteunen het volledige pakket uit README §6 — bedrag, opleverdatum,
+geldigheidsduur, voorbehouden, motivatie en overname-keuzes — en `bidPayloadSchema`
+valideert dat na de onthulling opnieuw. Het biedformulier in `web-demo` vraagt op dit
+moment alleen om bedrag en motivatie. Wie het hele pakket wil zien, moet dus via de API
+of via `sealBid` uit `@openbod/core` werken; het formulier loopt achter op de core.
 
 Nog niet gebouwd (zie backlog, "Later"): white-label opmaak, publieke transparency-log
 (anchoring), pluggable iDIN-identiteit, certificering/trust-list, en een tweede reskinbare

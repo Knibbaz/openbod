@@ -1,0 +1,61 @@
+# Eén publieke demo-instantie. Drie containers, één poort naar buiten.
+#
+#   cp deploy/.env.example deploy/.env   # en vul PUBLIC_URL in
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# Zet hier een reverse proxy met TLS voor (Caddy, Traefik, of wat je host
+# aanbiedt) en laat die naar poort 8080 wijzen.
+
+name: openbod-demo
+
+services:
+  identity:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    command: ["node", "packages/identity/dist/server.js"]
+    environment:
+      NODE_ENV: production
+      IDENTITY_PORT: "4001"
+      IDENTITY_ISSUER: ${PUBLIC_URL}/api/identity
+      IDENTITY_ALLOWED_ORIGINS: ${PUBLIC_URL}
+      APP_BASE_URL: ${PUBLIC_URL}
+      # Deze instantie heeft geen mailserver. Zonder deze schakelaar kan
+      # niemand inloggen. Zie packages/identity/src/server.ts: alleen voor
+      # de publieke demo met verzonnen woningen, nooit voor echte biedingen.
+      IDENTITY_DEMO_MODE: "true"
+      TRUST_PROXY: "true"
+    restart: unless-stopped
+    expose:
+      - "4001"
+
+  core:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    command: ["node", "packages/core/dist/api/server.js"]
+    environment:
+      NODE_ENV: production
+      CORE_PORT: "4000"
+      CORE_ALLOWED_ORIGINS: ${PUBLIC_URL}
+      # De issuer moet exact matchen met wat identity in de JWT zet.
+      IDENTITY_ISSUER: ${PUBLIC_URL}/api/identity
+      # De JWKS haalt de core intern op, niet via de publieke URL.
+      IDENTITY_JWKS_URL: http://identity:4001/.well-known/jwks.json
+      TRUST_PROXY: "true"
+    depends_on:
+      - identity
+    restart: unless-stopped
+    expose:
+      - "4000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${PUBLIC_PORT:-8080}:8080"
+    depends_on:
+      - core
+      - identity
+    restart: unless-stopped

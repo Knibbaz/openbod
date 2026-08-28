@@ -1,0 +1,28 @@
+# De demo-frontend plus een reverse proxy. Alles draait op één origin:
+# /              -> de statische React-build
+# /api/core/     -> de bied-core
+# /api/identity/ -> de identiteitsservice
+#
+# Daardoor is er geen cross-origin-verkeer in de browser, en blijft de naad
+# tussen core en identiteit toch echt: het zijn twee losse processen.
+
+FROM node:22-alpine AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/identity/package.json packages/identity/
+COPY packages/verifier/package.json packages/verifier/
+COPY packages/web-demo/package.json packages/web-demo/
+RUN npm ci --ignore-scripts
+
+COPY packages/web-demo packages/web-demo
+
+# Relatieve paden: de frontend praat met dezelfde host die hem serveert.
+ENV VITE_CORE_URL=/api/core
+ENV VITE_IDENTITY_URL=/api/identity
+RUN npm run build --workspace packages/web-demo
+
+FROM caddy:2-alpine AS runtime
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /app/packages/web-demo/dist /srv

@@ -26,11 +26,19 @@ const AUDIENCE = "openbod-core";
 const LINK_TTL_MS = 15 * 60 * 1000;
 const TOKEN_TTL = "1h";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+// Waar de magic link naartoe wijst: de frontend van deze instantie.
+const APP_BASE_URL = (process.env.APP_BASE_URL ?? "http://localhost:5173").replace(/\/+$/, "");
 // Alleen buiten productie de magic-link-token rechtstreeks teruggeven i.p.v.
 // mailen: er is in de demo geen mailserver aangesloten. In productie MOET
 // dit uitstaan, anders kan iedereen inloggen als elk e-mailadres zonder er
 // toegang toe te hebben — dat ondermijnt de hele identiteitscontrole.
-const EXPOSE_DEV_LINK = !IS_PRODUCTION;
+//
+// IDENTITY_DEMO_MODE zet dit bewust weer aan voor de publieke demo-instantie.
+// Die heeft geen mailserver, dus zonder deze schakelaar kan niemand inloggen.
+// Ze bevat uitsluitend verzonnen woningen en is geen productiesysteem: zet dit
+// nooit aan op een instantie waar echte biedingen op binnenkomen.
+const DEMO_MODE = process.env.IDENTITY_DEMO_MODE === "true";
+const EXPOSE_DEV_LINK = !IS_PRODUCTION || DEMO_MODE;
 
 const ALLOWED_ORIGINS = (process.env.IDENTITY_ALLOWED_ORIGINS ?? "http://localhost:5173")
   .split(",")
@@ -50,7 +58,9 @@ await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(cors, { origin: ALLOWED_ORIGINS, methods: ["GET", "POST"] });
 await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
-if (IS_PRODUCTION) {
+if (IS_PRODUCTION && DEMO_MODE) {
+  console.warn("[identity] DEMO-instantie: magic-link-token staat in de API-response. Iedereen kan inloggen als elk e-mailadres. Alleen voor de publieke demo.");
+} else if (IS_PRODUCTION) {
   console.log("[identity] productiemodus: magic links worden niet in de response getoond, alleen gemaild.");
 } else {
   console.warn("[identity] dev-modus: magic-link-token staat in de API-response (EXPOSE_DEV_LINK). Nooit zo in productie draaien.");
@@ -69,7 +79,7 @@ app.post(
     const token = randomUUID();
     pendingLinks.set(token, { email: body.data.email, expiresAt: Date.now() + LINK_TTL_MS, used: false });
 
-    const link = `http://localhost:5173/login/consume?token=${token}`;
+    const link = `${APP_BASE_URL}/login/consume?token=${token}`;
     // Demo-vereenvoudiging: er is geen echte mailserver aangesloten. In
     // productie gaat dit uitsluitend per e-mail, nooit via de response of
     // de serverlog (die zou dan een credential-log zijn).
