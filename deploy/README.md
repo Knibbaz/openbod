@@ -1,7 +1,7 @@
 # De demo-instantie draaien
 
 Eén publieke demo-instantie, drie containers, één poort naar buiten. Bedoeld om te
-kunnen klikken zonder te installeren — niet als productiesysteem. Zie
+kunnen klikken zonder te installeren, niet als productiesysteem. Zie
 "Bewuste beperkingen" hieronder voordat je hier iets echts op zet.
 
 ## Starten
@@ -97,6 +97,25 @@ De naad tussen bieden en identiteit blijft echt: het zijn twee losse processen d
 elkaar alleen via een geverifieerd token kennen (ARCHITECTURE.md §5). Dat `core`
 de JWKS intern ophaalt (`http://identity:4001/...`) terwijl de issuer de publieke
 URL is, is bewust: de issuer-claim is wat de bezoeker kan controleren.
+
+## Na een wijziging opnieuw uitrollen
+
+```
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+```
+
+`--build` is hier het woord dat ertoe doet. `--force-recreate` maakt nieuwe containers van de
+image die er al ligt en bouwt dus niets opnieuw: je krijgt precies dezelfde frontend terug, ook
+als de broncode veranderd is. Wil je zeker weten dat er niets uit de cache komt, gebruik dan
+`--build --no-cache`.
+
+Controleren wat er nu echt geserveerd wordt:
+
+```
+curl -s $PUBLIC_URL | grep -o '/assets/[^"]*\.js'
+```
+
+Verandert die bestandsnaam niet na een build, dan is de bundel niet vernieuwd.
 
 ## Pseudonieme subjects
 
