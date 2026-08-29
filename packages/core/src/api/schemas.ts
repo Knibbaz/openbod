@@ -41,6 +41,33 @@ export const awardBody = z.object({ bidId: uuidSchema }).strict();
  */
 export const abortBody = z.object({ reason: safeText(500, 3) }).strict();
 
+/**
+ * Foto-URL's. De instantie host geen bestanden, dus dit zijn verwijzingen naar
+ * elders. Uitsluitend https: een `javascript:`- of `data:`-URL die straks in een
+ * `src` belandt is een injectiepad, en http zou een veilige pagina alsnog
+ * onveilig maken. Het aantal en de lengte zijn begrensd omdat dit veld anders
+ * een gratis opslagplek is.
+ */
+export const fotoUrlSchema = z
+  .string()
+  .trim()
+  .max(2_000)
+  .url()
+  .refine((u) => u.toLowerCase().startsWith("https://"), {
+    message: "alleen https-URL's zijn toegestaan",
+  });
+
+export const kenmerkenSchema = z
+  .object({
+    woonoppervlak: z.number().int().positive().max(100_000).optional(),
+    perceeloppervlak: z.number().int().positive().max(10_000_000).optional(),
+    kamers: z.number().int().positive().max(200).optional(),
+    slaapkamers: z.number().int().nonnegative().max(200).optional(),
+    bouwjaar: z.number().int().min(1000).max(2200).optional(),
+    energielabel: z.enum(["A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"]).optional(),
+  })
+  .strict();
+
 export const createListingBody = z.object({
   address: safeText(200, 3),
   prijsVorm: z.enum(["vraagprijs", "richtprijs", "bieden_vanaf"]),
@@ -67,6 +94,9 @@ export const createListingBody = z.object({
   // Pseudonieme sub van de verkoper (sha256-hex, zelfde vorm als bidderSub),
   // zodat het logboek straks ook naar hem gaat en niet alleen naar de bieders.
   sellerSub: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  fotos: z.array(fotoUrlSchema).max(24).optional(),
+  omschrijving: safeText(5_000).optional(),
+  kenmerken: kenmerkenSchema.optional(),
 });
 
 /**
@@ -105,6 +135,12 @@ export const listingPublicResponse = z.object({
   awardedBidId: uuidSchema.optional(),
   buitenProcedureReden: z.string().optional(),
   buitenProcedureAt: z.string().optional(),
+  fotos: z.array(z.string()),
+  omschrijving: z.string().optional(),
+  kenmerken: kenmerkenSchema.optional(),
+  // Publiek, want zonder de hash zelf kan niemand narekenen dat het dossier
+  // ongewijzigd is (I15).
+  dossierHash: z.string(),
 });
 
 export const listingListResponse = z.array(listingPublicResponse);

@@ -70,6 +70,12 @@ Een van de gemelde misstanden is een gesloten inschrijving waarbij de woning tó
 
 Zo'n verkoop kan geen enkel systeem verhinderen: hij gebeurt per definitie buiten het systeem. Wat dit protocol wel afdwingt, is dat er iets controleerbaars van overblijft. De overgang naar de eindstatus `buiten_procedure` vereist een opgegeven reden, die onverkort in het openbare logboek komt, en levert een eigen logregel op. Biedingen die op dat moment nog verzegeld waren, blijven verzegeld: ze worden niet alsnog geopend voor een procedure die niet doorgaat. De bieders houden wel het bewijs dat hun bod er stond en dat het nooit geopend is, en zij krijgen automatisch het logboek.
 
+### Waarop er geboden werd, ligt ook vast
+
+Een bod is een reactie op een advertentie. Een logboek dat alleen bedragen vastlegt, laat een stille wijziging van het woonoppervlak of van de lijst achterblijvende zaken volledig ongemoeid, terwijl dat precies de vergelijking is waar de verkoper op afgaat.
+
+Daarom gaat er bij het openen een hash over alles wat aan bieders getoond is: kenmerken, omschrijving, foto's, prijsvorm, roerende zaken en de spelregels. Die hash zit in de openingsregel van het logboek en staat publiek bij de woning, dus iedereen kan narekenen dat het dossier is wat het was. Opmaak zit er nadrukkelijk niet in: huisstijl mag veranderen zonder de integriteit te raken.
+
 ### Identiteit als losse naad
 
 Login is een aparte backend die de biedlogica niet raakt. Die backend authenticeert de gebruiker en geeft een ondertekend token af (OIDC-stijl) met een subject-claim, dat de bied-core verifieert. In de demo is de loginmethode een magic link (verificatie van een e-mailadres, genoeg om het protocol te tonen). Later federeert hier een zwaarder middel in.

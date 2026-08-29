@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CardActionArea from "@mui/material/CardActionArea";
 import Chip from "@mui/material/Chip";
@@ -38,7 +39,7 @@ export function Home() {
 
       <Button
         component={RouterLink}
-        to="/woningen/nieuw"
+        to="/beheer/nieuw"
         variant="contained"
         startIcon={<AddHomeIcon />}
         sx={{ alignSelf: "flex-start" }}
@@ -51,17 +52,48 @@ export function Home() {
       <Stack spacing={1.5}>
         {listings.map((l) => (
           <Card key={l.id} variant="outlined">
-            <CardActionArea component={RouterLink} to={`/woningen/${l.id}`} sx={{ p: 2 }}>
-              <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
-                <Typography sx={{ fontWeight: 600, mr: "auto" }}>{l.address}</Typography>
-                {l.bidCount !== undefined && (
-                  <Chip
-                    size="small"
-                    variant="outlined"
-                    label={`${l.bidCount} bieding${l.bidCount === 1 ? "" : "en"}`}
-                  />
-                )}
-                <StatusChip status={l.status} />
+            <CardActionArea component={RouterLink} to={`/woningen/${l.id}`}>
+              <Stack direction={{ xs: "column", sm: "row" }}>
+                <Box
+                  sx={{
+                    width: { xs: "100%", sm: 200 },
+                    aspectRatio: { xs: "16 / 9", sm: "4 / 3" },
+                    flexShrink: 0,
+                    bgcolor: "action.hover",
+                    backgroundImage: l.fotos[0] ? `url(${JSON.stringify(l.fotos[0])})` : undefined,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
+                />
+                <Stack spacing={1} sx={{ p: 2, flex: 1, minWidth: 0 }}>
+                  <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <Typography sx={{ fontWeight: 600, mr: "auto" }}>{l.address}</Typography>
+                    <StatusChip status={l.status} />
+                  </Stack>
+                  {l.askingPrice !== undefined && (
+                    <Typography variant="h3" color="primary.main">
+                      € {l.askingPrice.toLocaleString("nl-NL")}
+                    </Typography>
+                  )}
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mt: "auto" }}>
+                    {l.kenmerken?.woonoppervlak && (
+                      <Chip size="small" variant="outlined" label={`${l.kenmerken.woonoppervlak} m²`} />
+                    )}
+                    {l.kenmerken?.kamers && (
+                      <Chip size="small" variant="outlined" label={`${l.kenmerken.kamers} kamers`} />
+                    )}
+                    {l.kenmerken?.energielabel && (
+                      <Chip size="small" variant="outlined" label={`Label ${l.kenmerken.energielabel}`} />
+                    )}
+                    {l.bidCount !== undefined && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={`${l.bidCount} bieding${l.bidCount === 1 ? "" : "en"}`}
+                      />
+                    )}
+                  </Stack>
+                </Stack>
               </Stack>
             </CardActionArea>
           </Card>

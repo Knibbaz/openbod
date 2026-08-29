@@ -116,3 +116,18 @@ export function saveSellerKey(listingId: string, privateJwk: string) {
 export function loadSellerKey(listingId: string): string | null {
   return localStorage.getItem(STORAGE_PREFIX + listingId);
 }
+
+/**
+ * De woningen waarvan deze browser de verkopersleutel heeft. Dit is wat de
+ * beheeromgeving als "van mij" beschouwt. Bewust geen serverbegrip: de server
+ * weet niet wie de verkoper is en hoort dat ook niet te weten, dus het bezit
+ * van de sleutel is hier het enige eerlijke antwoord op die vraag.
+ */
+export function listSellerKeyListingIds(): string[] {
+  const ids: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(STORAGE_PREFIX)) ids.push(key.slice(STORAGE_PREFIX.length));
+  }
+  return ids;
+}

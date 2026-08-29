@@ -9,9 +9,11 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import LockIcon from "@mui/icons-material/LockOutlined";
 import { Home } from "./pages/Home";
-import { CreateListing } from "./pages/CreateListing";
 import { Login } from "./pages/Login";
-import { ListingDetail } from "./pages/ListingDetail";
+import { Woning } from "./pages/Woning";
+import { BeheerOverzicht } from "./pages/BeheerOverzicht";
+import { BeheerNieuw } from "./pages/BeheerNieuw";
+import { BeheerWoning } from "./pages/BeheerWoning";
 import { Uitleg } from "./pages/Uitleg";
 import { clearToken, getToken } from "./lib/api";
 
@@ -44,6 +46,14 @@ function App() {
             >
               Uitleg
             </Button>
+            <Button
+              component={RouterLink}
+              to="/beheer"
+              color={locatie.pathname.startsWith("/beheer") ? "primary" : "inherit"}
+              size="small"
+            >
+              Beheer
+            </Button>
             {ingelogd ? (
               <Button
                 size="small"
@@ -68,10 +78,14 @@ function App() {
       <Container maxWidth="md" component="main" sx={{ flex: 1, py: { xs: 3, sm: 5 } }}>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/woningen/nieuw" element={<CreateListing />} />
-          <Route path="/woningen/:id" element={<ListingDetail />} />
+          <Route path="/woningen/:id" element={<Woning />} />
           <Route path="/login" element={<Login />} />
           <Route path="/uitleg" element={<Uitleg />} />
+          {/* Beheer is voor de verkoper en zijn makelaar. De publieke
+              woningpagina toont daarom nooit meer een gunningsknop. */}
+          <Route path="/beheer" element={<BeheerOverzicht />} />
+          <Route path="/beheer/nieuw" element={<BeheerNieuw />} />
+          <Route path="/beheer/:id" element={<BeheerWoning />} />
         </Routes>
       </Container>
 

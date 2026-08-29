@@ -55,6 +55,23 @@ export type ListingStatus =
    */
   | "buiten_procedure";
 
+export type Energielabel = "A++++" | "A+++" | "A++" | "A+" | "A" | "B" | "C" | "D" | "E" | "F" | "G";
+
+/**
+ * Feitelijke kenmerken van de woning. Dit is presentatie, geen biedlogica, maar
+ * het is wel presentatie waarop iemand zijn bod baseert. Daarom gaat het mee in
+ * de dossierhash (zie `Listing.dossierHash`): wie na de deadline het
+ * woonoppervlak bijstelt, is achteraf aanwijsbaar.
+ */
+export interface Kenmerken {
+  woonoppervlak?: number;
+  perceeloppervlak?: number;
+  kamers?: number;
+  slaapkamers?: number;
+  bouwjaar?: number;
+  energielabel?: Energielabel;
+}
+
 export type PrijsVorm = "vraagprijs" | "richtprijs" | "bieden_vanaf";
 export type Verkoopmethode = "inschrijving" | "onderhandeling" | "bieden_met_deadline";
 
@@ -73,6 +90,21 @@ export interface Listing {
   deadline: string;
   rules: ListingRules;
   takeoverItems: OvernameItem[];
+  /** Foto-URL's. Puur presentatie; de instantie host geen bestanden. */
+  fotos: string[];
+  omschrijving?: string;
+  kenmerken?: Kenmerken;
+  /**
+   * Hash van alles wat aan bieders is getoond: kenmerken, omschrijving, foto's,
+   * prijsvorm, roerende zaken en de spelregels. Zit ook in de `listing_opened`-
+   * logregel, dus onwrikbaar vastgelegd op het moment van openen.
+   *
+   * Waarom dit ertoe doet: een bod is een reactie op wat er geadverteerd werd.
+   * Als het woonoppervlak of de lijst achterblijvende zaken na de deadline stil
+   * verandert, klopt de vergelijking tussen bod en woning niet meer. Met deze
+   * hash kan iedereen narekenen dat het dossier is wat het was (I15).
+   */
+  dossierHash: string;
   status: ListingStatus;
   createdAt: string;
   /**

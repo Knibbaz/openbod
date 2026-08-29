@@ -34,6 +34,7 @@ Dit is de kern. Elke invariant is een eigenschap die altijd moet gelden en die m
 - **I11 Privacy.** Motivatie en persoonsgegevens komen niet in het openbare logboek. In de gedeelde publieke log staan alleen hashes. Pseudoniemen zijn niet terug te rekenen naar een persoon, ook niet met een woordenlijst van waarschijnlijke waarden (§7).
 - **I13 Vastgelegde afhandeling.** Elke procedure eindigt in een vastgelegde eindstatus. Wordt zij buiten het systeem om afgehandeld (onderhandse verkoop, intrekking), dan is dat een gelogde gebeurtenis met opgegeven reden. Een procedure kan niet stilvallen zonder spoor.
 - **I14 Aantoonbare verstrekking.** Het biedlogboek gaat bij het bereiken van een eindstatus automatisch naar alle betrokkenen, zonder dat iemand erom hoeft te vragen, en die verzending is zelf een logregel met uitsluitend pseudonieme ontvangers.
+- **I15 Vastgelegd dossier.** Waarop er geboden werd, ligt net zo vast als dát er geboden werd. Alles wat aan bieders getoond is (kenmerken, omschrijving, foto's, prijsvorm, roerende zaken, spelregels) zit als hash in de openingsregel van het logboek en is publiek na te rekenen.
 - **I12 Anonimiteit tot gunning.** De identiteit van een bieder is voor de operator en de makelaar op geen enkel moment leesbaar, en is voor de verkoper pas beschikbaar nadat hij aan die bieder gunt. Vrijgave is een gelogde gebeurtenis.
 
 ## 4. Fasen (toestandsmachine)
@@ -89,6 +90,14 @@ Een systeem kan niet verhinderen dat een woning buiten het biedproces om wordt v
 - Biedingen die op dat moment nog niet onthuld waren, blijven verzegeld. Zij worden niet alsnog geopend voor een procedure die niet doorgaat. De bieders houden wel het bewijs dát hun bod er stond en dat het nooit geopend is: `bid_placed` staat in de keten, `bid_revealed` niet.
 - Het logboek wordt daarna automatisch verstrekt (§6a), zodat bieders van een afgebroken inschrijving niet in het ongewisse blijven.
 
+## 5c. Dossierhash
+
+Een bod is een reactie op een advertentie. Een logboek dat alleen bedragen vastlegt, laat een stille wijziging van het woonoppervlak of van de lijst achterblijvende zaken volledig ongemoeid, terwijl dat precies de vergelijking is waar de verkoper op afgaat en waar de bieder zijn bedrag op baseerde.
+
+Bij het openen van de woning wordt daarom een `dossierHash` berekend over de canonieke serialisatie van alles wat aan bieders getoond is: adres, prijsvorm en bedrag, verkoopmethode, sluitingstijd, spelregels, roerende zaken, foto's, omschrijving en kenmerken. Die hash gaat mee in de payload van de `listing_opened`-regel en staat publiek bij de woning, zodat iedereen hem kan narekenen.
+
+Opmaak hoort hier nadrukkelijk niet in. Kleuren, logo's, lettertypen en huisstijl mogen veranderen zonder de integriteit te raken (backlog E1-S3). Wat er wel in zit, is inhoud waarop iemand zijn bod baseert.
+
 ## 6. Logboek
 
 Elke logregel heeft de vorm uit ARCHITECTURE.md: `{ index, timestamp, type, payloadHash, prevHash, entryHash }`, met `entryHash = H(index || timestamp || type || payloadHash || prevHash)`. De root is de laatste `entryHash`. Verificatie herrekent de keten en vergelijkt de root met de geanchorde waarde (I3, I8).
@@ -134,10 +143,11 @@ De referentie-implementatie gebruikt daarom `sub = HMAC-SHA256(pepper, genormali
 | Oneerlijke makelaar | Weten wie er biedt, en daarop sturen | I12 (envelop versleuteld naar de verkoper, niet naar de instantie) |
 | Oneerlijke makelaar | Een inschrijving laten stilvallen en onderhands verkopen | I13 (eindstatus met gelogde reden verplicht) |
 | Oneerlijke makelaar | Het biedlogboek niet verstrekken en dat betwisten | I14 (verstrekking is automatisch en zelf een logregel) |
+| Oneerlijke makelaar | Het dossier bijstellen nadat er geboden is | I15 (dossierhash in de openingsregel) |
 | Verkoper | Identiteiten inzien vóór gunning | Slechts deels: gelogde vrijgave maakt het zichtbaar, niet onmogelijk (zie §5a) |
 
 Niet afgedekt zonder extra maatregelen: bewijzen dat een draaiende server exact de gemeten code uitvoert. Daarvoor is remote attestation nodig. Tot dan leunt het bewijs op certificering, anchoring en de ontvangstbewijzen van gebruikers.
 
 ## 10. Conformiteit
 
-Een implementatie is conform als zij voor elke invariant I1 tot en met I14 de bijbehorende test in de conformance-suite haalt, en de NTA 8061-velden en verkoopmethoden ondersteunt. Falen op één invariant betekent niet conform.
+Een implementatie is conform als zij voor elke invariant I1 tot en met I15 de bijbehorende test in de conformance-suite haalt, en de NTA 8061-velden en verkoopmethoden ondersteunt. Falen op één invariant betekent niet conform.

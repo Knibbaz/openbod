@@ -5,6 +5,17 @@ export const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL ?? "http://localho
 
 export type OvernameStatus = "blijft_achter" | "gevraagd_bedrag" | "in_overleg" | "niet_beschikbaar";
 
+export type Energielabel = "A++++" | "A+++" | "A++" | "A+" | "A" | "B" | "C" | "D" | "E" | "F" | "G";
+
+export interface Kenmerken {
+  woonoppervlak?: number;
+  perceeloppervlak?: number;
+  kamers?: number;
+  slaapkamers?: number;
+  bouwjaar?: number;
+  energielabel?: Energielabel;
+}
+
 export interface TakeoverItem {
   itemId: string;
   label: string;
@@ -36,6 +47,11 @@ export interface Listing {
   awardedBidId?: string;
   buitenProcedureReden?: string;
   buitenProcedureAt?: string;
+  fotos: string[];
+  omschrijving?: string;
+  kenmerken?: Kenmerken;
+  /** Hash van alles wat aan bieders getoond werd; zelf na te rekenen (I15). */
+  dossierHash: string;
 }
 
 export interface BidReceipt {
@@ -216,6 +232,11 @@ export const coreApi = {
       body: JSON.stringify({ reason }),
     });
     return json<Logbook>(res);
+  },
+  /** De woningen waarvan deze browser de verkopersleutel heeft. */
+  async listMine(ids: string[]) {
+    const all = await this.listListings();
+    return all.filter((l) => ids.includes(l.id));
   },
   /** null zolang het logboek nog niet verstuurd is; 404 is hier een normaal antwoord. */
   async getDelivery(listingId: string): Promise<Delivery | null> {

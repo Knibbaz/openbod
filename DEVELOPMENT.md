@@ -73,6 +73,36 @@ een `sub` is niet uit een adres te raden zonder de pepper, ook niet met een woor
 
 ## Frontend
 
+### Twee omgevingen, gescheiden routes
+
+De publieke kant is voor kopers, de beheerkant voor de verkoper en zijn makelaar. Dat is een
+bewuste scheiding: op de vorige versie stond het biedformulier naast de gunningsknop op dezelfde
+pagina, en dan is voor niemand duidelijk wie waar mag klikken.
+
+```
+/                 woningen, met foto, prijs en fase
+/woningen/:id     koperpagina: foto's, kenmerken, aftelklok, bieden, uitslag
+/login            inloggen via magic link
+/uitleg           hoe de verzegeling werkt
+/beheer           overzicht van je eigen woningen
+/beheer/nieuw     woning klaarzetten
+/beheer/:id       biedingen naast elkaar, gunnen, afsluiten
+```
+
+"Je eigen woningen" betekent: de woningen waarvan deze browser de verkopersleutel bewaart
+(`listSellerKeyListingIds`). Er is geen serverbegrip van eigenaarschap, want de server weet niet
+wie de verkoper is en hoort dat ook niet te weten. De keerzijde (op een ander apparaat zie je
+niets) staat in de UI uitgelegd in plaats van dat de gebruiker een leeg scherm krijgt.
+
+### Taal
+
+Protocoljargon staat niet in de hoofdstroom. `bidId`, `entryHash` en `logregel #7` zitten in het
+`Bewijspaneel`, dichtgeklapt, met in gewone taal ernaast wat ze betekenen. Dichtgeklapt is niet
+verstopt: een koper die drie ton biedt wil weten óf het goed staat, niet welke hash erbij hoort,
+maar het weglaten zou dit systeem net zo'n black box maken als de rest.
+
+### Vormgeving
+
 De demo-frontend gebruikt MUI (Material UI). Het thema staat in `packages/web-demo/src/theme.ts`: een
 diepe, rustige blauwtint, en kleur die betekenis draagt in plaats van decoratie. Rood is voor fouten,
 groen uitsluitend voor een geslaagde verificatie, oranje voor de fase waarin iets verzegeld en dus nog
@@ -146,6 +176,10 @@ Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
 - **Sub naar e-mail in het geheugen.** De identity-backend onthoudt die koppeling alleen
   voor wie tijdens deze processtart inlogde. Na een herstart is bezorging aan eerdere
   deelnemers onmogelijk tot zij opnieuw inloggen.
+- **Motivaties zijn voor niemand zichtbaar.** Een bieder kan een motivatie meesturen en die is
+  uitsluitend voor de verkoper bedoeld, maar er is geen endpoint dat haar teruggeeft. Dat is met
+  opzet: zonder verkopersrol zou zo'n endpoint de motivatie aan iedere ingelogde gebruiker tonen.
+  Dit hoort samen met de verkopersrol hieronder opgelost te worden, niet los.
 - **Geen verkopersrol.** Woningen aanmaken en gunnen vragen geen verkopersauthenticatie.
   Bij gunning valt dat mee: wie de sleutel niet heeft, krijgt een envelop die hij niet kan
   openen, en de gunning staat onuitwisbaar in het logboek. Een echte instantie hoort hier

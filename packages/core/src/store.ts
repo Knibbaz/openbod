@@ -8,9 +8,11 @@ import {
   type LogbookDelivery,
 } from "./logbook/delivery.js";
 import { sha256Hex } from "./commit/hash.js";
+import { computeDossierHash } from "./model/dossier.js";
 import { canonicalize } from "./commit/canonical.js";
 import type {
   BidReceipt,
+  Kenmerken,
   Listing,
   ListingRules,
   OvernameItem,
@@ -28,6 +30,9 @@ export interface CreateListingInput {
   deadline: string;
   rules: ListingRules;
   takeoverItems: Omit<OvernameItem, "itemId">[];
+  fotos?: string[];
+  omschrijving?: string;
+  kenmerken?: Kenmerken;
   /** JWK van de verkoper; bieders versleutelen hun identiteit hiernaartoe (I12). */
   sellerPublicKey?: string;
   /** Pseudonieme sub van de verkoper, zodat ook hij het logboek automatisch krijgt (E4-S3). */
@@ -81,6 +86,19 @@ export class OpenBodStore {
       throw new RuleViolationError("sluitingsdatum ligt in het verleden");
     }
     const id = randomUUID();
+    const takeoverItems = input.takeoverItems.map((item) => ({ ...item, itemId: randomUUID() }));
+    const dossierHash = computeDossierHash({
+      address: input.address,
+      prijsVorm: input.prijsVorm,
+      askingPrice: input.askingPrice,
+      verkoopmethode: input.verkoopmethode,
+      deadline: input.deadline,
+      rules: input.rules,
+      takeoverItems,
+      fotos: input.fotos ?? [],
+      omschrijving: input.omschrijving,
+      kenmerken: input.kenmerken,
+    });
     const listing: Listing = {
       id,
       address: input.address,
@@ -89,14 +107,20 @@ export class OpenBodStore {
       verkoopmethode: input.verkoopmethode,
       deadline: input.deadline,
       rules: input.rules,
-      takeoverItems: input.takeoverItems.map((item) => ({ ...item, itemId: randomUUID() })),
+      takeoverItems,
+      fotos: input.fotos ?? [],
+      omschrijving: input.omschrijving,
+      kenmerken: input.kenmerken,
+      dossierHash,
       status: "biedfase",
       createdAt: new Date().toISOString(),
       sellerPublicKey: input.sellerPublicKey,
       sellerSub: input.sellerSub,
     };
     const chain = new HashChain();
-    chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline })));
+    // De dossierhash gaat mee de keten in. Daarmee ligt vast waarop er geboden
+    // werd, niet alleen dát er geboden werd (I15).
+    chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline, dossierHash })));
     this.listings.set(id, { listing, chain, bids: new Map() });
     return listing;
   }
