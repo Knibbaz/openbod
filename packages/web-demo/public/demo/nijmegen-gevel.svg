@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" role="img">
+  <title>Illustratie van de demonstratiewoning</title>
+  
+  <defs>
+    <linearGradient id="lucht-nijmegen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#dcd9ea"/>
+      <stop offset="100%" stop-color="#f4f2f8"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#lucht-nijmegen)"/>
+  <g fill="#ffffff" opacity="0.75" transform="translate(190 120) scale(1.1)">
+    <circle cx="0" cy="0" r="26"/><circle cx="30" cy="-10" r="34"/><circle cx="66" cy="2" r="24"/>
+    <rect x="-2" y="-2" width="70" height="26" rx="13"/>
+  </g><g fill="#ffffff" opacity="0.75" transform="translate(880 85) scale(0.8)">
+    <circle cx="0" cy="0" r="26"/><circle cx="30" cy="-10" r="34"/><circle cx="66" cy="2" r="24"/>
+    <rect x="-2" y="-2" width="70" height="26" rx="13"/>
+  </g>
+  <rect x="0" y="520" width="1200" height="155" fill="#c8c2c4"/>
+  <rect x="0" y="615" width="1200" height="12" fill="#ffffff" opacity="0.45"/>
+  <rect x="0" y="627" width="1200" height="48" fill="#000000" opacity="0.05"/>
+  <g transform="translate(120 520)">
+    <rect x="-5.7" y="-49.9" width="11.4" height="49.9" fill="#6b5642"/>
+    <circle cx="0" cy="-74.1" r="43.7" fill="#6f8f66"/>
+    <circle cx="-28.5" cy="-54.1" r="30.4" fill="#6f8f66" opacity="0.9"/>
+    <circle cx="28.5" cy="-57" r="28.5" fill="#6f8f66" opacity="0.85"/>
+  </g>
+  <g transform="translate(1090 520)">
+    <rect x="-4.8" y="-42" width="9.6" height="42" fill="#6b5642"/>
+    <circle cx="0" cy="-62.4" r="36.8" fill="#6f8f66"/>
+    <circle cx="-24" cy="-45.6" r="25.6" fill="#6f8f66" opacity="0.9"/>
+    <circle cx="24" cy="-48" r="24" fill="#6f8f66" opacity="0.85"/>
+  </g>
+  
+    <g>
+    <rect x="720" y="10" width="34" height="70" fill="#844d53"/>
+    <rect x="714" y="0" width="46" height="12" fill="#494049"/>
+  </g>
+    <rect x="376" y="74" width="448" height="30" fill="#494049"/>
+    <rect x="390" y="100" width="420" height="420" fill="#9a5d63"/>
+    <rect x="390" y="100" width="420" height="150" fill="#844d53" opacity="0.3"/>
+    <g>
+    <rect x="440" y="150" width="130" height="100" fill="#f6dfa8"/>
+    <rect x="440" y="150" width="130" height="100" fill="none" stroke="#f6f1ef" stroke-width="7"/>
+    <line x1="505" y1="150" x2="505" y2="250" stroke="#f6f1ef" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="630" y="150" width="130" height="100" fill="#8fb4c9"/>
+    <rect x="630" y="150" width="130" height="100" fill="none" stroke="#f6f1ef" stroke-width="7"/>
+    <line x1="695" y1="150" x2="695" y2="250" stroke="#f6f1ef" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="440" y="310" width="130" height="100" fill="#8fb4c9"/>
+    <rect x="440" y="310" width="130" height="100" fill="none" stroke="#f6f1ef" stroke-width="7"/>
+    <line x1="505" y1="310" x2="505" y2="410" stroke="#f6f1ef" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="630" y="310" width="130" height="100" fill="#f6dfa8"/>
+    <rect x="630" y="310" width="130" height="100" fill="none" stroke="#f6f1ef" stroke-width="7"/>
+    <line x1="695" y1="310" x2="695" y2="410" stroke="#f6f1ef" stroke-width="5"/>
+  </g>
+    <rect x="550" y="410" width="100" height="110" fill="#494049"/>
+  <g transform="translate(280 520)">
+    <ellipse cx="0" cy="-14" rx="34" ry="22" fill="#6f8f66"/>
+    <ellipse cx="-22" cy="-8" rx="22" ry="15" fill="#6f8f66" opacity="0.85"/>
+    <ellipse cx="22" cy="-9" rx="20" ry="14" fill="#6f8f66" opacity="0.9"/>
+  </g>
+  <g transform="translate(920 520)">
+    <ellipse cx="0" cy="-12.6" rx="30.6" ry="19.8" fill="#6f8f66"/>
+    <ellipse cx="-19.8" cy="-7.2" rx="19.8" ry="13.5" fill="#6f8f66" opacity="0.85"/>
+    <ellipse cx="19.8" cy="-8.1" rx="18" ry="12.6" fill="#6f8f66" opacity="0.9"/>
+  </g>
+  <ellipse cx="600" cy="528" rx="420" ry="14" fill="#000000" opacity="0.07"/>
+</svg>

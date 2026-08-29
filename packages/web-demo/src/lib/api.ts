@@ -5,12 +5,31 @@ export const IDENTITY_URL = import.meta.env.VITE_IDENTITY_URL ?? "http://localho
 
 export type OvernameStatus = "blijft_achter" | "gevraagd_bedrag" | "in_overleg" | "niet_beschikbaar";
 
+export type Energielabel = "A++++" | "A+++" | "A++" | "A+" | "A" | "B" | "C" | "D" | "E" | "F" | "G";
+
+export interface Kenmerken {
+  woonoppervlak?: number;
+  perceeloppervlak?: number;
+  kamers?: number;
+  slaapkamers?: number;
+  bouwjaar?: number;
+  energielabel?: Energielabel;
+}
+
 export interface TakeoverItem {
   itemId: string;
   label: string;
   status: OvernameStatus;
   amount?: number;
 }
+
+export type ListingStatus =
+  | "aangemaakt"
+  | "biedfase"
+  | "gesloten"
+  | "onthuld"
+  | "onherroepelijk"
+  | "buiten_procedure";
 
 export interface Listing {
   id: string;
@@ -21,11 +40,20 @@ export interface Listing {
   deadline: string;
   rules: { intrekkenToegestaan: boolean; aanpassenToegestaan: boolean; aantalBiedingenZichtbaar: boolean };
   takeoverItems: TakeoverItem[];
-  status: "aangemaakt" | "biedfase" | "gesloten" | "onthuld" | "onherroepelijk";
+  status: ListingStatus;
   createdAt: string;
   bidCount?: number;
   sellerPublicKey?: string;
   awardedBidId?: string;
+  buitenProcedureReden?: string;
+  buitenProcedureAt?: string;
+  fotos: string[];
+  omschrijving?: string;
+  kenmerken?: Kenmerken;
+  /** Pagina van de makelaar of aanbodsite waar dezelfde woning staat. */
+  externeLink?: string;
+  /** Hash van alles wat aan bieders getoond werd; zelf na te rekenen (I15). */
+  dossierHash: string;
 }
 
 export interface BidReceipt {
@@ -55,8 +83,20 @@ export interface LogEntry {
   entryHash: string;
 }
 
+/** Bewijs dat het logboek automatisch is verstuurd; bevat alleen pseudonieme refs. */
+export interface Delivery {
+  listingId: string;
+  recipientRefs: string[];
+  deliveredAt: string;
+  logIndex: number;
+}
+
 export interface Logbook {
-  listing: Pick<Listing, "id" | "address" | "prijsVorm" | "verkoopmethode" | "deadline">;
+  listing: Pick<Listing, "id" | "address" | "prijsVorm" | "verkoopmethode" | "deadline" | "status"> & {
+    buitenProcedureReden?: string;
+    buitenProcedureAt?: string;
+    awardedBidId?: string;
+  };
   entries: {
     bidId: string;
     bidderRef: string;
@@ -121,7 +161,45 @@ export const identityApi = {
   },
 };
 
+/** Antwoord van /demo: draait deze instantie als demonstratie, en tot wanneer? */
+export type DemoStatus =
+  | { actief: false }
+  | { actief: true; gestartOp: string; resetOp: string; cyclusMinuten: number };
+
+/** Adresopzoeking uit open bronnen (E1-S4). */
+export interface AdresSuggestie {
+  id: string;
+  weergavenaam: string;
+}
+
+export interface AdresKenmerken {
+  id: string;
+  adres: string;
+  straat: string;
+  huisnummer: string;
+  postcode?: string;
+  woonplaats: string;
+  woonoppervlak?: number;
+  bouwjaar?: number;
+  gebruiksdoel?: string;
+  bron: string;
+}
+
 export const coreApi = {
+  async zoekAdressen(q: string): Promise<AdresSuggestie[]> {
+    return json<AdresSuggestie[]>(await fetch(`${CORE_URL}/adressen?q=${encodeURIComponent(q)}`));
+  },
+  async getAdresKenmerken(adresId: string): Promise<AdresKenmerken> {
+    return json<AdresKenmerken>(await fetch(`${CORE_URL}/adressen/${encodeURIComponent(adresId)}`));
+  },
+  async getDemoStatus(): Promise<DemoStatus> {
+    try {
+      return await json<DemoStatus>(await fetch(`${CORE_URL}/demo`));
+    } catch {
+      // Een oudere instantie kent dit endpoint niet; dan is het gewoon geen demo.
+      return { actief: false };
+    }
+  },
   async listListings() {
     return json<Listing[]>(await fetch(`${CORE_URL}/listings`));
   },
@@ -182,5 +260,39 @@ export const coreApi = {
   },
   async getLogbook(listingId: string) {
     return json<Logbook>(await fetch(`${CORE_URL}/listings/${listingId}/logbook`));
+  },
+  /**
+   * Afhandeling buiten de procedure om: geeft de verkoop een eindstatus met
+   * reden in plaats van een inschrijving die stilvalt (E7-S2).
+   */
+  async abort(listingId: string, reason: string) {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/abort`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ reason }),
+    });
+    return json<Logbook>(res);
+  },
+  /** De woningen waarvan deze browser de verkopersleutel heeft. */
+  async listMine(ids: string[]) {
+    // Per id ophalen in plaats van de publieke lijst filteren: een woning die
+    // nog niet gepubliceerd is staat niet in die lijst, en juist die moet de
+    // makelaar hier zien staan.
+    const opgehaald = await Promise.all(
+      ids.map((id) => this.getListing(id).catch(() => null)),
+    );
+    return opgehaald.filter((l): l is Listing => l !== null);
+  },
+  /** Een voorbereide woning openstellen voor biedingen. */
+  async publishListing(id: string) {
+    return json<Listing>(
+      await fetch(`${CORE_URL}/listings/${id}/publish`, { method: "POST", headers: authHeaders() }),
+    );
+  },
+  /** null zolang het logboek nog niet verstuurd is; 404 is hier een normaal antwoord. */
+  async getDelivery(listingId: string): Promise<Delivery | null> {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/delivery`);
+    if (res.status === 404) return null;
+    return json<Delivery>(res);
   },
 };

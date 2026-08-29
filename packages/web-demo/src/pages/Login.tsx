@@ -1,5 +1,12 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
+import Button from "@mui/material/Button";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { identityApi, setToken } from "../lib/api";
 
 export function Login() {
@@ -38,29 +45,57 @@ export function Login() {
   }
 
   return (
-    <div>
-      <h1>Inloggen via magic link</h1>
-      <p>
-        Demo-vereenvoudiging: er is geen mailserver aangesloten, dus de link wordt in dev-modus hieronder getoond in
-        plaats van gemaild (protocol.md §7 — magic link nu, iDIN later, zonder de core te wijzigen). In productie
-        toont de API deze link nooit rechtstreeks.
-      </p>
-      <form onSubmit={requestLink}>
-        <label>
-          E-mailadres
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </label>
-        <button type="submit">Stuur magic link</button>
-      </form>
-      {sent && !devLink && <p>Als dit e-mailadres bekend is, is er een magic link verstuurd. Check je inbox.</p>}
-      {devLink && (
-        <div>
-          <p>Magic link (normaal per e-mail):</p>
-          <code>{devLink}</code>
-          <button onClick={consume}>Link openen en inloggen</button>
-        </div>
+    <Stack spacing={3} sx={{ maxWidth: 560 }}>
+      <Stack spacing={1.5}>
+        <Typography variant="h1">Inloggen</Typography>
+        <Typography color="text.secondary">
+          Je adres gaat niet naar het biedsysteem. De inlogdienst maakt er een pseudoniem van; de biedlogica ziet
+          alleen dat pseudoniem en kan er niet uit afleiden wie je bent.
+        </Typography>
+      </Stack>
+
+      <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
+        <Stack component="form" onSubmit={requestLink} spacing={2}>
+          <TextField
+            label="E-mailadres"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+          <Button type="submit" variant="contained" sx={{ alignSelf: "flex-start" }}>
+            Stuur magic link
+          </Button>
+        </Stack>
+      </Paper>
+
+      {sent && !devLink && (
+        <Alert severity="info">Als dit e-mailadres bekend is, is er een magic link verstuurd. Check je inbox.</Alert>
       )}
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
-    </div>
+
+      {devLink && (
+        <Alert severity="warning">
+          <AlertTitle>Demo-instantie: de link staat hier in plaats van in je inbox</AlertTitle>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Er is geen mailserver aangesloten. In productie toont de API deze link nooit rechtstreeks, want dan zou
+            iedereen kunnen inloggen als elk adres.
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            <code>{devLink}</code>
+          </Typography>
+          <Button variant="contained" color="warning" onClick={consume}>
+            Link openen en inloggen
+          </Button>
+        </Alert>
+      )}
+
+      {error && <Alert severity="error">{error}</Alert>}
+
+      <Typography variant="body2" color="text.secondary">
+        Later schuift hier een zwaarder identiteitsmiddel in (iDIN-waardig), zonder dat de biedlogica verandert. Zie
+        <code> spec/protocol.md</code> §7.
+      </Typography>
+    </Stack>
   );
 }

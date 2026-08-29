@@ -45,7 +45,32 @@ export type ListingStatus =
   | "biedfase"
   | "gesloten"
   | "onthuld"
-  | "onherroepelijk";
+  | "onherroepelijk"
+  /**
+   * De procedure is buiten dit systeem om afgehandeld: ingetrokken, onderhands
+   * verkocht, of anderszins gestopt zonder gunning via de deadline. Dit is een
+   * eindstatus (protocol.md §5b). Hij bestaat omdat het niet hebben van zo'n
+   * status precies de klacht is die kopers melden: een inschrijving die stilvalt
+   * en waarvan achteraf niemand kan aantonen wat er gebeurd is.
+   */
+  | "buiten_procedure";
+
+export type Energielabel = "A++++" | "A+++" | "A++" | "A+" | "A" | "B" | "C" | "D" | "E" | "F" | "G";
+
+/**
+ * Feitelijke kenmerken van de woning. Dit is presentatie, geen biedlogica, maar
+ * het is wel presentatie waarop iemand zijn bod baseert. Daarom gaat het mee in
+ * de dossierhash (zie `Listing.dossierHash`): wie na de deadline het
+ * woonoppervlak bijstelt, is achteraf aanwijsbaar.
+ */
+export interface Kenmerken {
+  woonoppervlak?: number;
+  perceeloppervlak?: number;
+  kamers?: number;
+  slaapkamers?: number;
+  bouwjaar?: number;
+  energielabel?: Energielabel;
+}
 
 export type PrijsVorm = "vraagprijs" | "richtprijs" | "bieden_vanaf";
 export type Verkoopmethode = "inschrijving" | "onderhandeling" | "bieden_met_deadline";
@@ -65,6 +90,29 @@ export interface Listing {
   deadline: string;
   rules: ListingRules;
   takeoverItems: OvernameItem[];
+  /** Foto-URL's. Puur presentatie; de instantie host geen bestanden. */
+  fotos: string[];
+  omschrijving?: string;
+  kenmerken?: Kenmerken;
+  /**
+   * Verwijzing naar de plek waar deze woning ook staat: de pagina van de
+   * makelaar of een aanbodsite. Handig voor een bieder die de foto's en de
+   * brochure daar wil bekijken, en het maakt zichtbaar dat dezelfde woning op
+   * twee plekken staat. Telt mee in de dossierhash, want het hoort bij wat er
+   * getoond werd.
+   */
+  externeLink?: string;
+  /**
+   * Hash van alles wat aan bieders is getoond: kenmerken, omschrijving, foto's,
+   * prijsvorm, roerende zaken en de spelregels. Zit ook in de `listing_opened`-
+   * logregel, dus onwrikbaar vastgelegd op het moment van openen.
+   *
+   * Waarom dit ertoe doet: een bod is een reactie op wat er geadverteerd werd.
+   * Als het woonoppervlak of de lijst achterblijvende zaken na de deadline stil
+   * verandert, klopt de vergelijking tussen bod en woning niet meer. Met deze
+   * hash kan iedereen narekenen dat het dossier is wat het was (I15).
+   */
+  dossierHash: string;
   status: ListingStatus;
   createdAt: string;
   /**
@@ -75,6 +123,16 @@ export interface Listing {
   sellerPublicKey?: string;
   /** Gezet zodra er gegund is; verwijst naar het gekozen bod. */
   awardedBidId?: string;
+  /**
+   * Pseudonieme subject van de verkoper (dezelfde vorm als `bidderSub`), zodat
+   * het biedlogboek ook naar de verkoper gaat en niet alleen naar de bieders
+   * (E4-S3). Optioneel: de MVP kent nog geen volwaardige verkopersrol.
+   */
+  sellerSub?: string;
+  /** Verplichte reden bij status `buiten_procedure`; staat ook in het logboek. */
+  buitenProcedureReden?: string;
+  /** Moment waarop de procedure buiten het systeem om is afgehandeld. */
+  buitenProcedureAt?: string;
 }
 
 /** Wat de core daadwerkelijk opslaat vóór de onthulling: nooit leesbare inhoud. */
@@ -114,7 +172,18 @@ export type LogEntryType =
   | "listing_closed"
   | "bid_revealed"
   | "gegund"
-  | "identiteit_vrijgegeven";
+  | "identiteit_vrijgegeven"
+  /**
+   * De procedure is buiten dit systeem om afgehandeld. Legt vast dát en wanneer
+   * het gebeurde, plus een hash van de opgegeven reden (I13).
+   */
+  | "buiten_procedure_afgehandeld"
+  /**
+   * Het biedlogboek is verstuurd naar alle betrokkenen. Legt de verzending zelf
+   * vast in de keten, zodat "ik heb nooit een logboek gekregen" een
+   * controleerbare bewering wordt in plaats van welles-nietes (I14).
+   */
+  | "logboek_verstuurd";
 
 export interface LogEntry {
   index: number;

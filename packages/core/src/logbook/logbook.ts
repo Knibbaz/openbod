@@ -16,9 +16,27 @@ export interface PublicLogbookEntry {
   invalidReason?: string;
 }
 
+/**
+ * Pseudonieme verwijzing naar een deelnemer. Stabiel per subject binnen een
+ * logboek, maar niet terug te rekenen naar een persoon (I11). Ook gebruikt om
+ * de ontvangers van een verzending vast te leggen zonder persoonsgegevens.
+ */
+export function bidderRef(sub: string): string {
+  return `bieder-${sha256Hex(sub).slice(0, 8)}`;
+}
+
 /** Het NTA 8061-biedlogboek. Openbare versie bevat geen motivatie of herleidbare identiteit (I11). */
 export interface Logbook {
-  listing: Pick<Listing, "id" | "address" | "prijsVorm" | "verkoopmethode" | "deadline">;
+  listing: Pick<Listing, "id" | "address" | "prijsVorm" | "verkoopmethode" | "deadline" | "status"> & {
+    /**
+     * Alleen gezet bij status `buiten_procedure`: waarom de procedure niet via
+     * de deadline en gunning is afgerond. Zonder dit veld leest een afgebroken
+     * inschrijving in het logboek als een inschrijving die simpelweg ophoudt.
+     */
+    buitenProcedureReden?: string;
+    buitenProcedureAt?: string;
+    awardedBidId?: string;
+  };
   entries: PublicLogbookEntry[];
   log: LogEntry[];
   rootHash: string;
@@ -35,7 +53,7 @@ export function generatePublicLogbook(
 ): Logbook {
   const entries: PublicLogbookEntry[] = revealed.map((bid) => ({
     bidId: bid.bidId,
-    bidderRef: `bieder-${sha256Hex(bid.bidderSub).slice(0, 8)}`,
+    bidderRef: bidderRef(bid.bidderSub),
     amount: bid.amount,
     handoverDate: bid.handoverDate,
     validUntil: bid.validUntil,
@@ -65,5 +83,9 @@ function pickListingFields(listing: Listing) {
     prijsVorm: listing.prijsVorm,
     verkoopmethode: listing.verkoopmethode,
     deadline: listing.deadline,
+    status: listing.status,
+    buitenProcedureReden: listing.buitenProcedureReden,
+    buitenProcedureAt: listing.buitenProcedureAt,
+    awardedBidId: listing.awardedBidId,
   };
 }

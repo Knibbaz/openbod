@@ -30,9 +30,62 @@ export const sealedBidBody = z
     ciphertext: ciphertextSchema,
     identityEnvelope: identityEnvelopeSchema.optional(),
   })
-  .strict(); // weigert onbekende velden zoals "amount" — geen plaintext mag meekomen (I1)
+  .strict(); // weigert onbekende velden zoals "amount": geen plaintext mag meekomen (I1)
 
 export const awardBody = z.object({ bidId: uuidSchema }).strict();
+
+/**
+ * Afhandeling buiten de procedure om (E7-S2). De reden is verplicht en komt
+ * onverkort in het openbare logboek, dus zij is een procedurele verklaring,
+ * geen plek voor persoonsgegevens over bieders.
+ */
+export const abortBody = z.object({ reason: safeText(500, 3) }).strict();
+
+/**
+ * Foto-URL's. De instantie host geen bestanden, dus dit zijn verwijzingen naar
+ * elders. Uitsluitend https: een `javascript:`- of `data:`-URL die straks in een
+ * `src` belandt is een injectiepad, en http zou een veilige pagina alsnog
+ * onveilig maken. Het aantal en de lengte zijn begrensd omdat dit veld anders
+ * een gratis opslagplek is.
+ */
+export const fotoUrlSchema = z
+  .string()
+  .trim()
+  .max(2_000)
+  .url()
+  .refine((u) => u.toLowerCase().startsWith("https://"), {
+    message: "alleen https-URL's zijn toegestaan",
+  });
+
+/**
+ * Foto's mogen ook bij de instantie zelf vandaan komen, als pad op dezelfde
+ * origin: `/demo/zwolle-gevel.svg`. Dat is nodig voor de demo-woningen, die hun
+ * beelden uit de repo halen in plaats van van een vreemde host, en het is ook
+ * de weg voor een white-label instantie met eigen beeldmateriaal.
+ *
+ * Alleen een enkele slash aan het begin: `//host/pad` is protocol-relatief en
+ * dus wél een andere host, en een `javascript:`- of `data:`-URL begint nooit
+ * met een slash. Backslashes weren we omdat browsers die op sommige plekken als
+ * slash lezen.
+ */
+const zelfdeOriginPad = z
+  .string()
+  .trim()
+  .max(2_000)
+  .regex(/^\/[^/\\][^\\]*$/, { message: "een eigen pad moet met één slash beginnen" });
+
+export const fotoBronSchema = z.union([fotoUrlSchema, zelfdeOriginPad]);
+
+export const kenmerkenSchema = z
+  .object({
+    woonoppervlak: z.number().int().positive().max(100_000).optional(),
+    perceeloppervlak: z.number().int().positive().max(10_000_000).optional(),
+    kamers: z.number().int().positive().max(200).optional(),
+    slaapkamers: z.number().int().nonnegative().max(200).optional(),
+    bouwjaar: z.number().int().min(1000).max(2200).optional(),
+    energielabel: z.enum(["A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"]).optional(),
+  })
+  .strict();
 
 export const createListingBody = z.object({
   address: safeText(200, 3),
@@ -57,6 +110,17 @@ export const createListingBody = z.object({
   // JWK van de verkoper. De bijbehorende private sleutel blijft bij de verkoper;
   // die hoort hier nooit binnen te komen (protocol.md §5a).
   sellerPublicKey: z.string().min(1).max(2_000).optional(),
+  // Pseudonieme sub van de verkoper (sha256-hex, zelfde vorm als bidderSub),
+  // zodat het logboek straks ook naar hem gaat en niet alleen naar de bieders.
+  sellerSub: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  fotos: z.array(fotoBronSchema).max(24).optional(),
+  omschrijving: safeText(5_000).optional(),
+  kenmerken: kenmerkenSchema.optional(),
+  // Pagina van de makelaar of aanbodsite. Zelfde https-eis als bij foto's: dit
+  // veld belandt in een href en is anders een injectiepad.
+  externeLink: fotoUrlSchema.optional(),
+  // Weglaten betekent meteen openstellen, zoals het altijd werkte.
+  publiceren: z.boolean().optional(),
 });
 
 /**
@@ -88,11 +152,20 @@ export const listingPublicResponse = z.object({
     aantalBiedingenZichtbaar: z.boolean(),
   }),
   takeoverItems: z.array(takeoverItemPublic),
-  status: z.enum(["aangemaakt", "biedfase", "gesloten", "onthuld", "onherroepelijk"]),
+  status: z.enum(["aangemaakt", "biedfase", "gesloten", "onthuld", "onherroepelijk", "buiten_procedure"]),
   createdAt: z.string(),
   bidCount: z.number().int().nonnegative().optional(),
   sellerPublicKey: z.string().optional(),
   awardedBidId: uuidSchema.optional(),
+  buitenProcedureReden: z.string().optional(),
+  buitenProcedureAt: z.string().optional(),
+  fotos: z.array(z.string()),
+  omschrijving: z.string().optional(),
+  kenmerken: kenmerkenSchema.optional(),
+  externeLink: z.string().optional(),
+  // Publiek, want zonder de hash zelf kan niemand narekenen dat het dossier
+  // ongewijzigd is (I15).
+  dossierHash: z.string(),
 });
 
 export const listingListResponse = z.array(listingPublicResponse);
@@ -120,6 +193,8 @@ const logEntryResponse = z.object({
     "bid_revealed",
     "gegund",
     "identiteit_vrijgegeven",
+    "buiten_procedure_afgehandeld",
+    "logboek_verstuurd",
   ]),
   payloadHash: z.string(),
   prevHash: z.string(),
@@ -133,6 +208,10 @@ export const logbookResponse = z.object({
     prijsVorm: z.enum(["vraagprijs", "richtprijs", "bieden_vanaf"]),
     verkoopmethode: z.enum(["inschrijving", "onderhandeling", "bieden_met_deadline"]),
     deadline: z.string(),
+    status: z.enum(["aangemaakt", "biedfase", "gesloten", "onthuld", "onherroepelijk", "buiten_procedure"]),
+    buitenProcedureReden: z.string().optional(),
+    buitenProcedureAt: z.string().optional(),
+    awardedBidId: uuidSchema.optional(),
   }),
   entries: z.array(
     z.object({
@@ -190,4 +269,39 @@ export const myBidResponse = z.object({
   version: z.number().int().positive(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+/** Wat een instantie teruggeeft over de automatische verstrekking van het logboek (E4-S3). */
+export const deliveryResponse = z.object({
+  listingId: uuidSchema,
+  recipientRefs: z.array(z.string()),
+  deliveredAt: z.string(),
+  logIndex: z.number().int().nonnegative(),
+});
+
+/**
+ * Adresopzoeking uit open bronnen (E1-S4). Alles optioneel wat de BAG niet
+ * altijd heeft: een adres zonder oppervlakte is nog steeds bruikbaar.
+ */
+/** Vrije tekst van de gebruiker: begrensd, want dit gaat door naar een externe bron. */
+export const adresZoekQuery = z.object({ q: z.string().trim().min(3).max(120) });
+
+/** De locatieserver geeft id's als `adr-<hex>`; alleen die vorm gaat door. */
+export const adresIdParams = z.object({ adresId: z.string().regex(/^[a-z]{3}-[0-9a-f]{6,64}$/) });
+
+export const adresSuggestieResponse = z.array(
+  z.object({ id: z.string(), weergavenaam: z.string() }),
+);
+
+export const adresKenmerkenResponse = z.object({
+  id: z.string(),
+  adres: z.string(),
+  straat: z.string(),
+  huisnummer: z.string(),
+  postcode: z.string().optional(),
+  woonplaats: z.string(),
+  woonoppervlak: z.number().optional(),
+  bouwjaar: z.number().optional(),
+  gebruiksdoel: z.string().optional(),
+  bron: z.string(),
 });

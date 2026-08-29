@@ -24,7 +24,7 @@ export interface Identity {
  * de geconfigureerde identity-issuer worden geaccepteerd. Zonder die
  * restrictie zou een JWT met `alg: none` of een token van een andere,
  * onbedoelde issuer met een geldige (maar verkeerde) sleutel kunnen
- * misleiden — klassieke JWT-algoritme-verwarring (OWASP).
+ * misleiden: klassieke JWT-algoritme-verwarring (OWASP).
  */
 export async function verifyIdentityToken(token: string): Promise<Identity> {
   if (typeof token !== "string" || token.length === 0 || token.length > MAX_TOKEN_LENGTH) {

@@ -1,7 +1,18 @@
 # Eén publieke demo-instantie. Drie containers, één poort naar buiten.
 #
-#   cp deploy/.env.example deploy/.env   # en vul PUBLIC_URL in
-#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#   cp deploy/.env.example deploy/.env   # en vul PUBLIC_URL en de geheimen in
+#
+# Bijwerken kan op twee manieren, en beide werken met dit bestand:
+#
+#   docker compose ... pull && docker compose ... up -d      # gepubliceerde images
+#   git pull && docker compose ... up -d --build             # zelf bouwen
+#
+# Let op: --build, niet --force-recreate. Dat laatste maakt nieuwe containers van
+# de image die er al ligt en bouwt niets opnieuw, dus dan krijg je de oude
+# frontend terug terwijl alles er goed uitziet. En zonder `pull` blijft een
+# oudere `latest` die al op de machine staat gewoon draaien.
+#
+# Let ook op wat een herstart wist: er is geen database. Zie deploy/README.md.
 #
 # Zet hier een reverse proxy met TLS voor (Caddy, Traefik, of wat je host
 # aanbiedt) en laat die naar poort 8080 wijzen.
@@ -10,6 +21,7 @@ name: openbod-demo
 
 services:
   identity:
+    image: ${OPENBOD_API_IMAGE:-basabbink/openbod-api}:${OPENBOD_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -17,19 +29,37 @@ services:
     environment:
       NODE_ENV: production
       IDENTITY_PORT: "4001"
-      IDENTITY_ISSUER: ${PUBLIC_URL}/api/identity
-      IDENTITY_ALLOWED_ORIGINS: ${PUBLIC_URL}
-      APP_BASE_URL: ${PUBLIC_URL}
-      # Deze instantie heeft geen mailserver. Zonder deze schakelaar kan
-      # niemand inloggen. Zie packages/identity/src/server.ts: alleen voor
-      # de publieke demo met verzonnen woningen, nooit voor echte biedingen.
-      IDENTITY_DEMO_MODE: "true"
+      IDENTITY_ISSUER: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}/api/identity
+      IDENTITY_ALLOWED_ORIGINS: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}
+      APP_BASE_URL: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}
+      # Demo-instantie: geen mailserver, dus de magic link wordt op het scherm
+      # getoond in plaats van gemaild. Zonder deze schakelaar kan op zo'n
+      # instantie niemand inloggen; mét deze schakelaar kan iedereen inloggen
+      # als elk e-mailadres. Staat daarom standaard uit: zet DEMO_INSTANCE=true
+      # in deploy/.env, en alleen op een instantie met verzonnen woningen.
+      IDENTITY_DEMO_MODE: "${DEMO_INSTANCE:-false}"
+      # Gedeeld geheim voor de bezorgopdrachten die de core naar
+      # /notify/logbook stuurt (E4-S3). Moet gelijk zijn aan dat van de core.
+      DELIVERY_SHARED_SECRET: ${DELIVERY_SHARED_SECRET:?ontbreekt in deploy/.env, zie deploy/.env.example}
+      # Zonder pepper is een pseudonieme sub terug te rekenen uit een adres.
+      # De backend weigert in productie te starten als deze ontbreekt.
+      IDENTITY_SUBJECT_PEPPER: ${IDENTITY_SUBJECT_PEPPER:?ontbreekt in deploy/.env, zie deploy/.env.example}
+      # Vaste ondertekensleutel voor inlogtokens. Zonder deze is iedereen na een
+      # herstart uitgelogd, want de core controleert tokens tegen de JWKS.
+      IDENTITY_SIGNING_JWK: ${IDENTITY_SIGNING_JWK:-}
       TRUST_PROXY: "true"
     restart: unless-stopped
     expose:
       - "4001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4001/.well-known/jwks.json').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   core:
+    image: ${OPENBOD_API_IMAGE:-basabbink/openbod-api}:${OPENBOD_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -37,19 +67,34 @@ services:
     environment:
       NODE_ENV: production
       CORE_PORT: "4000"
-      CORE_ALLOWED_ORIGINS: ${PUBLIC_URL}
+      CORE_ALLOWED_ORIGINS: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}
       # De issuer moet exact matchen met wat identity in de JWT zet.
-      IDENTITY_ISSUER: ${PUBLIC_URL}/api/identity
+      IDENTITY_ISSUER: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}/api/identity
       # De JWKS haalt de core intern op, niet via de publieke URL.
       IDENTITY_JWKS_URL: http://identity:4001/.well-known/jwks.json
+      # Automatische verstrekking van het biedlogboek (E4-S3). De core kent geen
+      # e-mailadressen; alleen identity kan een pseudonieme sub naar een adres
+      # terugvertalen. Zonder deze twee variabelen wordt er niets verstuurd.
+      CORE_DELIVERY_ENDPOINT: http://identity:4001/notify/logbook
+      DELIVERY_SHARED_SECRET: ${DELIVERY_SHARED_SECRET:?ontbreekt in deploy/.env, zie deploy/.env.example}
+      # Demo-instantie: vult zichzelf met een scenario en wist zichzelf elk half
+      # uur. Nooit aanzetten op een instantie met echte biedingen; die mag
+      # zichzelf niet wissen en haar core hoort nooit zelf te verzegelen.
+      CORE_DEMO: "${DEMO_INSTANCE:-false}"
+      # Vaste ondertekensleutel van de instantie. Zonder deze hoort een gisteren
+      # gedownload logboek bij een sleutel die na een herstart niet meer bestaat,
+      # en faalt de verificatie van een logboek dat gewoon echt is.
+      CORE_SIGNING_KEY: ${CORE_SIGNING_KEY:-}
       TRUST_PROXY: "true"
     depends_on:
-      - identity
+      identity:
+        condition: service_healthy
     restart: unless-stopped
     expose:
       - "4000"
 
   web:
+    image: ${OPENBOD_WEB_IMAGE:-basabbink/openbod-web}:${OPENBOD_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web

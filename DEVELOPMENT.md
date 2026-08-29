@@ -7,7 +7,7 @@ MVP-implementatie van OpenBod: drie services (`identity`, `core`, `web-demo`) pl
 
 - Node.js ≥ 20
 - Internettoegang naar `api.drand.sh` (het publieke drand quicknet-netwerk, periode 3s).
-  Er draait geen eigen of lokale timelock — de MVP gebruikt het echte netwerk.
+  Er draait geen eigen of lokale timelock; de MVP gebruikt het echte netwerk.
 
 ## Installeren en bouwen
 
@@ -25,6 +25,50 @@ npm run dev --workspace packages/core       # poort 4000
 npm run dev --workspace packages/web-demo   # poort 5173
 ```
 
+Wil je de automatische verstrekking van het biedlogboek lokaal echt zien lopen, zet dan
+in beide backends hetzelfde geheim:
+
+```
+IDENTITY_SUBJECT_PEPPER=$(openssl rand -hex 32) \\
+  DELIVERY_SHARED_SECRET=lokaal-geheim npm run dev --workspace packages/identity
+CORE_DELIVERY_ENDPOINT=http://localhost:4001/notify/logbook \
+  DELIVERY_SHARED_SECRET=lokaal-geheim npm run dev --workspace packages/core
+```
+
+Zonder die variabelen waarschuwt de core alleen dat er niets verstuurd wordt. `IDENTITY_SUBJECT_PEPPER`
+mag lokaal weg: dan maakt identity er zelf een aan, met een waarschuwing dat subjects bij elke herstart
+veranderen. In productie start identity zonder pepper bewust niet op.
+
+Wil je de instantie zichzelf laten vullen met een scenario, zet dan `CORE_DEMO=true`:
+
+```
+CORE_DEMO=true npm run dev --workspace packages/core
+```
+
+De demo-instantie zet vijf woningen neer die tegelijk in verschillende fasen staan, zodat
+een bezoeker niet hoeft te wachten om te zien wat er gebeurt: eentje waarop nog een half
+uur geboden kan worden, eentje die binnen enkele minuten sluit en voor je ogen onthult,
+eentje waarvan de uitslag al bekend is en waaraan gegund is, eentje die buiten de
+procedure om is afgehandeld, en eentje met strengere spelregels. Elk half uur wordt alles
+gewist en begint het scenario opnieuw. De frontend haalt dat op bij `GET /demo` en toont
+er een banner over, dus een echte instantie laat die mededeling vanzelf weg.
+
+De beelden bij die woningen staan in `packages/web-demo/public/demo` en worden gemaakt
+door `packages/web-demo/scripts/genereer-demobeelden.mjs` (draaien met `node`, en de
+uitvoer staat in de repo zodat de build ze niet nodig heeft). Het zijn getekende
+illustraties en geen foto's: een echte woningfoto is van de fotograaf of de makelaar, en
+dit project kan de sector moeilijk aanspreken op het overnemen van andermans gegevens
+terwijl het zelf foto's leent. Ze zijn ook eerlijk over wat ze zijn, want de woningen
+bestaan niet. Sinds deze beelden bestaat naast de https-eis op fotovelden ook een pad op
+dezelfde origin (`/demo/zwolle-gevel.svg`); dat is meteen de weg voor een white-label
+instantie met eigen beeldmateriaal.
+
+De seeder in `packages/core/src/demo/scenario.ts` is de enige plek waar de core zelf
+biedingen verzegelt. In een echte instantie gebeurt dat uitsluitend in de browser van de
+bieder: zou de server het doen, dan kent zij de bedragen en is de hele garantie weg.
+Daarom laadt die module alleen bij `CORE_DEMO=true`, en wist een echte instantie zichzelf
+nooit.
+
 Open `http://localhost:5173`. Er is geen mailserver aangesloten: een "magic link"
 wordt getoond in de UI en gelogd door `identity`, in plaats van gemaild.
 
@@ -32,12 +76,74 @@ wordt getoond in de UI en gelogd door `identity`, in plaats van gemaild.
 
 ```
 npm run test --workspace packages/core       # property- en integratietests, echte drand-calls
+npm run test --workspace packages/identity   # pseudonieme subjects, snel
 npm run test --workspace packages/verifier
 ```
 
 De timelock-tests praten met het echte publieke netwerk en duren daardoor
 enkele seconden per test (periode 3s). Er is bewust geen gemockte timelock:
 het bewijs dat "de operator niet kan gluren" moet tegen het echte netwerk gelden.
+
+## Wat de instantie werkelijk in handen heeft
+
+`packages/core/test/invariants/geen-lek.test.ts` is de test die de kernclaim draagt. Hij
+dumpt de complete objectgraaf van de store, inclusief Maps en interne velden, en zoekt
+daarin naar de echte waarden: bedrag, motivatie, naam, contactgegeven. Vóór de deadline
+komt geen ervan voor. Na de onthulling hoort het bedrag er wél te staan, naam en contact
+nog steeds niet, ook niet na gunning.
+
+De aanpak is expres bot. Een test die controleert of de bekende velden netjes versleuteld
+zijn, bewijst alleen iets over de velden die je bedacht had. Deze bewijst dat de waarde
+nergens staat, ook niet in een cache of in een veld dat later wordt toegevoegd. Dat de
+test zelf werkt, blijkt uit de assertie dat de commitment wél in de dump te vinden is:
+afwezigheid is dus echt afwezigheid, geen onbereikbaarheid.
+
+`packages/identity/test/subject.test.ts` doet hetzelfde voor de andere helft van de claim:
+een `sub` is niet uit een adres te raden zonder de pepper, ook niet met een woordenlijst.
+
+## Frontend
+
+### Twee omgevingen, gescheiden routes
+
+De publieke kant is voor kopers, de beheerkant voor de verkoper en zijn makelaar. Dat is een
+bewuste scheiding: op de vorige versie stond het biedformulier naast de gunningsknop op dezelfde
+pagina, en dan is voor niemand duidelijk wie waar mag klikken.
+
+```
+/                 woningen, met foto, prijs en fase
+/woningen/:id     koperpagina: foto's, kenmerken, aftelklok, bieden, uitslag
+/login            inloggen via magic link
+/uitleg           hoe de verzegeling werkt
+/beheer           overzicht van je eigen woningen
+/beheer/nieuw     woning klaarzetten
+/beheer/:id       biedingen naast elkaar, gunnen, afsluiten
+```
+
+"Je eigen woningen" betekent: de woningen waarvan deze browser de verkopersleutel bewaart
+(`listSellerKeyListingIds`). Er is geen serverbegrip van eigenaarschap, want de server weet niet
+wie de verkoper is en hoort dat ook niet te weten. De keerzijde (op een ander apparaat zie je
+niets) staat in de UI uitgelegd in plaats van dat de gebruiker een leeg scherm krijgt.
+
+### Taal
+
+Protocoljargon staat niet in de hoofdstroom. `bidId`, `entryHash` en `logregel #7` zitten in het
+`Bewijspaneel`, dichtgeklapt, met in gewone taal ernaast wat ze betekenen. Dichtgeklapt is niet
+verstopt: een koper die drie ton biedt wil weten óf het goed staat, niet welke hash erbij hoort,
+maar het weglaten zou dit systeem net zo'n black box maken als de rest.
+
+### Vormgeving
+
+De demo-frontend gebruikt MUI (Material UI). Het thema staat in `packages/web-demo/src/theme.ts`: een
+diepe, rustige blauwtint, en kleur die betekenis draagt in plaats van decoratie. Rood is voor fouten,
+groen uitsluitend voor een geslaagde verificatie, oranje voor de fase waarin iets verzegeld en dus nog
+niet leesbaar is. Nergens maakt kleur het ene bod aantrekkelijker dan het andere: de verkoper weegt zelf
+zekerheid tegen hoogte, en de interface hoort daar geen duim op te leggen.
+
+Licht en donker volgen het systeemthema van de bezoeker; er is bewust geen eigen schakelaar.
+
+Let op bij MUI 9: `Stack` accepteert geen losse system props meer (`alignItems`, `flexWrap`,
+`justifyContent`). Die horen in `sx`. Alleen `direction`, `spacing`, `divider` en `useFlexGap` staan nog
+als eigen prop op het component.
 
 ## Zelf verifiëren
 
@@ -60,16 +166,59 @@ Gebouwd (zie `spec/backlog.md` §"Prioritering voor de demo"): woning aanmaken m
 spelregels en lijst roerende zaken, magic-link login, verzegeld bod met het volledige
 pakket uit README §6, één lopend bod per bieder dat je zelf kunt inzien, aanpassen en
 intrekken, anoniem bieden met vrijgave bij gunning, automatische onthulling op de
-deadline, hashketen-logboek, aantal-zichtbaar-regel, en de losse verifier.
+deadline, hashketen-logboek, aantal-zichtbaar-regel, automatische verstrekking van het
+biedlogboek bij een eindstatus, afhandeling buiten de procedure om met vastgelegde reden,
+en de losse verifier.
 
-Concepten worden bewust niet serverside bewaard. Zou de instantie een concept opslaan,
-dan weet zij vóór de deadline dat iemand een bod voorbereidt — precies de
-informatievoorsprong die dit project wil afschaffen. Een concept hoort dus in de browser
-van de bieder te blijven en komt daarom niet in het logboek.
+Een bod kan als concept bewaard worden, maar alleen in de browser van de bieder
+(`packages/web-demo/src/lib/concept.ts`). Dat een koper eerst nog wil bellen of een nacht
+wil slapen over zijn bedrag is normaal, en dan opnieuw beginnen is onnodig vervelend.
+Serverside bewaren kan echter niet: dan weet de instantie vóór de deadline dat iemand een
+bod voorbereidt en waarvoor, precies de informatievoorsprong die dit project wil
+afschaffen. Een concept is dus geen bod: het gaat nergens heen, komt niet in het logboek
+en telt nergens mee. De prijs daarvan, dat het weg is op een ander apparaat of na het
+wissen van browsergegevens, staat als zodanig op het scherm en niet in de kleine
+lettertjes. Uitloggen wist alle concepten, want een gedeeld apparaat hoort het halve bod
+van de vorige gebruiker niet te tonen.
+
+Een concept kan zichzelf ook op een gekozen moment versturen, standaard vijf tot zestig
+minuten voor de sluitingstijd. Die timer draait in het tabblad van de bieder, om dezelfde
+reden als het concept zelf: een instantie die het bod alvast in bewaring neemt, weet vóór
+de sluitingstijd dat deze bieder meedoet, en de bieder zou tot het geplande moment geen
+ontvangstbewijs hebben om op terug te vallen als het bod nooit verstuurd wordt. De prijs
+is dat een gesloten laptop betekent dat er niets gebeurt. Dat staat als waarschuwing bij
+de keuze, in de aftelling en achteraf: is het moment verstreken terwijl de pagina dicht
+was, dan meldt de biedpagina bij het openen dat er niets verstuurd is en biedt het aan het
+alsnog te doen. De verzending gebeurt nooit stilzwijgend achteraf.
+
+Wat de bieder vóór de deadline wél van de server krijgt, is zijn eigen ontvangstbewijs:
+`bidId`, tijdstip, `logIndex`, `prevHash`, `entryHash` en de handtekening van de
+instantie, met een knop om het te bewaren. Dat bewijs bindt via `prevHash` de hele
+voorgeschiedenis van de ketting vast, dus een kopie van het logboek-tot-nu-toe voegt daar
+cryptografisch niets aan toe, terwijl het wel het aantal biedingen en de biedtijdstippen
+vóór de sluitingstijd zou lekken, ook bij woningen waar de verkoper de aantal-zichtbaar-
+regel juist uit heeft gezet. Vandaar het ontvangstbewijs wel, de logboekkopie niet.
+
+Bij het klaarzetten van een woning zoekt de makelaar het adres op, en dan komen het
+woonoppervlak en het bouwjaar uit de BAG van het Kadaster (via PDOK, zonder sleutel of
+registratie). Die opzoeking loopt via de core en niet via de browser, zodat PDOK de
+instantie ziet in plaats van elke makelaar afzonderlijk. De waarden vullen het formulier
+en zetten niets vast: de BAG heeft het over oppervlaktes en bouwjaren geregeld anders dan
+de werkelijkheid, en wat de makelaar neerzet gaat het dossier in, niet wat de BAG zegt.
+De herkomst blijft in beeld, zodat een bieder kan nakijken waar een getal vandaan komt.
+Hapert de bron, dan meldt de core dat met een 502 en vult de makelaar de gegevens zelf in.
+
+Bewerkingsgeschiedenis en de tijd die iemand over het invullen deed, worden niet
+vastgelegd. Dat is gedragsobservatie van een consument die geen keus heeft of hij meedoet,
+het dient geen doel in deze procedure, en het zou dezelfde informatievoorsprong opleveren
+die dit project bestrijdt.
 
 Nog niet gebouwd (zie backlog, "Later"): white-label opmaak, publieke transparency-log
-(anchoring), pluggable iDIN-identiteit, certificering/trust-list, en een tweede reskinbare
-frontend. De architectuur is er wel op ingericht (aparte `identity`-service, `anchor/`-module
+(anchoring), pluggable iDIN-identiteit, certificering/trust-list, een tweede reskinbare
+frontend, en het demoscenario (E8-S2) dat de garanties aan een bezoeker laat zien. Dat
+laatste heeft nog echt werk nodig: de bewijzen bestaan als tests, maar de vorm waarin je
+ze aan een bezoeker toont zonder dat de uitleg los kan lopen van de werkelijke uitvoer is
+nog een open ontwerpvraag. Zie E8-S2 in de backlog voor de openstaande punten. De architectuur is er wel op ingericht (aparte `identity`-service, `anchor/`-module
 als plek gereserveerd in `packages/core/src`).
 
 Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
@@ -84,10 +233,25 @@ Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
   is. Werkt voor de demo; productie gebruikt een betrouwbare scheduler.
 - **Geen anchoring en geen certificering.** Alleen de instantie zelf ondertekent; er is nog
   geen gedeelde transparency-log of toetser (ARCHITECTURE.md §6.2 en §6.3).
+- **Het logboek wordt niet echt gemaild.** De verstrekking zelf werkt volledig, inclusief
+  de `logboek_verstuurd`-regel in de hashketen. Alleen de laatste stap schrijft naar de
+  serverlog, want er is geen mailserver aangesloten (`sendLogbookMail` in
+  `packages/identity/src/server.ts`). Zonder `CORE_DELIVERY_ENDPOINT` en
+  `DELIVERY_SHARED_SECRET` verstuurt de core helemaal niets en zegt dat ook bij het starten.
+- **Vluchtige subject-pepper.** Zonder `IDENTITY_SUBJECT_PEPPER` genereert identity er lokaal zelf een.
+  Handig om te draaien, maar subjects veranderen dan bij elke herstart. In productie weigert de backend
+  te starten zonder, want een zwakker pseudoniem stilletjes uitdelen ondermijnt de claim eronder.
+- **Sub naar e-mail in het geheugen.** De identity-backend onthoudt die koppeling alleen
+  voor wie tijdens deze processtart inlogde. Na een herstart is bezorging aan eerdere
+  deelnemers onmogelijk tot zij opnieuw inloggen.
+- **Motivaties zijn voor niemand zichtbaar.** Een bieder kan een motivatie meesturen en die is
+  uitsluitend voor de verkoper bedoeld, maar er is geen endpoint dat haar teruggeeft. Dat is met
+  opzet: zonder verkopersrol zou zo'n endpoint de motivatie aan iedere ingelogde gebruiker tonen.
+  Dit hoort samen met de verkopersrol hieronder opgelost te worden, niet los.
 - **Geen verkopersrol.** Woningen aanmaken en gunnen vragen geen verkopersauthenticatie.
   Bij gunning valt dat mee: wie de sleutel niet heeft, krijgt een envelop die hij niet kan
   openen, en de gunning staat onuitwisbaar in het logboek. Een echte instantie hoort hier
   bezit van de private sleutel te laten bewijzen.
 - **Sleutel van de verkoper in localStorage.** Kwijt is kwijt, en dan blijft de identiteit
-  van de winnende bieder onleesbaar. Productie geeft hier een herstelpad — maar nooit een
+  van de winnende bieder onleesbaar. Productie geeft hier een herstelpad, maar nooit een
   sleutel die de operator ook heeft, want dan vervalt de hele garantie.

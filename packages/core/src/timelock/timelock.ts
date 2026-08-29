@@ -10,7 +10,7 @@ import {
  * Timelock via het publieke drand quicknet-netwerk (periode 3s, RFC9380-schema).
  * De versleuteling gebeurt bij de bieder (client), niet in de core (ARCHITECTURE.md §3).
  * De core roept dezelfde functies aan om te ontsleutelen, maar kan dat pas
- * wanneer de rondesleutel na de deadline publiek beschikbaar is — dat is de
+ * wanneer de rondesleutel na de deadline publiek beschikbaar is. Dat is de
  * eigenschap die "de operator kan niet gluren" wiskundig maakt (I1, I4).
  */
 

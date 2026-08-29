@@ -2,11 +2,17 @@ import { randomUUID } from "node:crypto";
 import { HashChain } from "./log/hashchain.js";
 import { InstanceKeypair } from "./log/signing.js";
 import { revealBid } from "./reveal/reveal.js";
-import { generatePublicLogbook, type Logbook } from "./logbook/logbook.js";
+import { generatePublicLogbook, bidderRef, type Logbook } from "./logbook/logbook.js";
+import {
+  ConsoleLogbookDelivery,
+  type LogbookDelivery,
+} from "./logbook/delivery.js";
 import { sha256Hex } from "./commit/hash.js";
+import { computeDossierHash } from "./model/dossier.js";
 import { canonicalize } from "./commit/canonical.js";
 import type {
   BidReceipt,
+  Kenmerken,
   Listing,
   ListingRules,
   OvernameItem,
@@ -24,8 +30,30 @@ export interface CreateListingInput {
   deadline: string;
   rules: ListingRules;
   takeoverItems: Omit<OvernameItem, "itemId">[];
+  fotos?: string[];
+  omschrijving?: string;
+  kenmerken?: Kenmerken;
+  /** Pagina van de makelaar of aanbodsite waar dezelfde woning staat. */
+  externeLink?: string;
+  /**
+   * Meteen openstellen voor biedingen, of eerst als concept klaarzetten? Een
+   * makelaar wil een woning kunnen voorbereiden voordat de inschrijving loopt.
+   * Standaard true, zodat bestaande aanroepers niets merken.
+   */
+  publiceren?: boolean;
   /** JWK van de verkoper; bieders versleutelen hun identiteit hiernaartoe (I12). */
   sellerPublicKey?: string;
+  /** Pseudonieme sub van de verkoper, zodat ook hij het logboek automatisch krijgt (E4-S3). */
+  sellerSub?: string;
+}
+
+/** Uitkomst van een automatische verstrekking van het biedlogboek (E4-S3). */
+export interface DeliveryResult {
+  listingId: string;
+  /** Pseudonieme refs van de ontvangers; nooit adressen, ook niet intern. */
+  recipientRefs: string[];
+  deliveredAt: string;
+  logIndex: number;
 }
 
 export class ListingNotFoundError extends Error {}
@@ -40,6 +68,9 @@ interface ListingRecord {
   logbook?: Logbook;
   /** Zie `revealListing`: houdt een lopende onthulling vast tegen dubbele logregels. */
   revealing?: Promise<Logbook>;
+  /** Zie `deliverLogbook`: zelfde bescherming tegen dubbele verzendregels. */
+  delivering?: Promise<DeliveryResult>;
+  delivery?: DeliveryResult;
 }
 
 /**
@@ -49,13 +80,57 @@ interface ListingRecord {
  */
 export class OpenBodStore {
   private listings = new Map<string, ListingRecord>();
-  readonly keypair = new InstanceKeypair();
+  readonly keypair: InstanceKeypair;
+
+  /**
+   * Het kanaal waarlangs het biedlogboek automatisch naar alle betrokkenen gaat
+   * (E4-S3). Standaard een luide no-op, zodat een verkeerd geconfigureerde
+   * instantie zichtbaar niets verstuurt in plaats van stil te falen.
+   */
+  constructor(
+    private readonly deliveryChannel: LogbookDelivery = new ConsoleLogbookDelivery(),
+    /**
+     * De sleutel waarmee deze instantie ondertekent. Meegeven zodat een
+     * deployment een vaste sleutel kan laden: zonder dat is een gedownload
+     * logboek na een herstart niet meer te verifieren.
+     */
+    keypair: InstanceKeypair = new InstanceKeypair(),
+  ) {
+    this.keypair = keypair;
+  }
+
+  /**
+   * Alles wissen. Bestaat voor de demo-instantie, die zichzelf periodiek
+   * terugzet naar het beginscherm (`demo/scenario.ts`). De sleutel van de
+   * instantie blijft staan: die hoort bij de instantie en niet bij de inhoud,
+   * en een eerder gedownload logboek moet ook na een reset te verifieren zijn.
+   */
+  clear(): void {
+    this.listings.clear();
+  }
 
   createListing(input: CreateListingInput): Listing {
-    if (new Date(input.deadline).getTime() <= Date.now()) {
+    const publiceren = input.publiceren ?? true;
+    // Een concept mag een sluitingstijd hebben die nog niet klopt; die wordt
+    // pas bindend op het moment van publiceren.
+    if (publiceren && new Date(input.deadline).getTime() <= Date.now()) {
       throw new RuleViolationError("sluitingsdatum ligt in het verleden");
     }
     const id = randomUUID();
+    const takeoverItems = input.takeoverItems.map((item) => ({ ...item, itemId: randomUUID() }));
+    const dossierHash = computeDossierHash({
+      address: input.address,
+      prijsVorm: input.prijsVorm,
+      askingPrice: input.askingPrice,
+      verkoopmethode: input.verkoopmethode,
+      deadline: input.deadline,
+      rules: input.rules,
+      takeoverItems,
+      fotos: input.fotos ?? [],
+      omschrijving: input.omschrijving,
+      kenmerken: input.kenmerken,
+      externeLink: input.externeLink,
+    });
     const listing: Listing = {
       id,
       address: input.address,
@@ -64,15 +139,51 @@ export class OpenBodStore {
       verkoopmethode: input.verkoopmethode,
       deadline: input.deadline,
       rules: input.rules,
-      takeoverItems: input.takeoverItems.map((item) => ({ ...item, itemId: randomUUID() })),
-      status: "biedfase",
+      takeoverItems,
+      fotos: input.fotos ?? [],
+      omschrijving: input.omschrijving,
+      kenmerken: input.kenmerken,
+      externeLink: input.externeLink,
+      dossierHash,
+      status: publiceren ? "biedfase" : "aangemaakt",
       createdAt: new Date().toISOString(),
       sellerPublicKey: input.sellerPublicKey,
+      sellerSub: input.sellerSub,
     };
     const chain = new HashChain();
-    chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline })));
+    // De keten begint pas als de inschrijving opengaat. Een concept is nog geen
+    // procedure: er valt niets aan te tonen zolang niemand kon bieden, en de
+    // dossierhash hoort te horen bij wat er bij het openen op het scherm stond.
+    if (publiceren) {
+      // De dossierhash gaat mee de keten in. Daarmee ligt vast waarop er geboden
+      // werd, niet alleen dát er geboden werd (I15).
+      chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline, dossierHash })));
+    }
     this.listings.set(id, { listing, chain, bids: new Map() });
     return listing;
+  }
+
+  /**
+   * Een voorbereide woning openstellen voor biedingen. Dit is het moment waarop
+   * de keten begint en de spelregels bindend worden, dus de sluitingstijd moet
+   * nu wel in de toekomst liggen.
+   */
+  publishListing(listingId: string): Listing {
+    const rec = this.record(listingId);
+    if (rec.listing.status !== "aangemaakt") {
+      throw new InvalidTransitionError(`kan niet publiceren vanuit status ${rec.listing.status}`);
+    }
+    if (new Date(rec.listing.deadline).getTime() <= Date.now()) {
+      throw new RuleViolationError("sluitingsdatum ligt in het verleden");
+    }
+    rec.listing.status = "biedfase";
+    rec.chain.append(
+      "listing_opened",
+      sha256Hex(
+        canonicalize({ id: rec.listing.id, deadline: rec.listing.deadline, dossierHash: rec.listing.dossierHash }),
+      ),
+    );
+    return rec.listing;
   }
 
   getListing(id: string): Listing {
@@ -113,7 +224,7 @@ export class OpenBodStore {
     // Eén lopend bod per bieder per woning. Zonder deze regel kan één account het
     // veld vullen met tien biedingen, en dat vertekent zowel het zichtbare aantal
     // als het beeld dat de verkoper bij de onthulling krijgt. Wie zijn bod wil
-    // veranderen, past het aan (`adjustBid`) — dat blijft zichtbaar in het logboek.
+    // veranderen, past het aan (`adjustBid`); dat blijft zichtbaar in het logboek.
     if (this.activeBidFor(listingId, bidderSub)) {
       throw new RuleViolationError("je hebt al een lopend bod op deze woning; pas het aan of trek het eerst in");
     }
@@ -201,7 +312,7 @@ export class OpenBodStore {
    * plus decryptie per bod) en de scheduler in de API roept dit herhaald aan zolang
    * de status "gesloten" is. Zonder deze guard passeert een tweede aanroep de check
    * terwijl de eerste nog await't, en komen dezelfde biedingen twee keer als
-   * `bid_revealed` in de hashketen — een logboek dat klopt qua hashes maar liegt
+   * `bid_revealed` in de hashketen: een logboek dat klopt qua hashes maar liegt
    * over wat er gebeurd is. Gelijktijdige aanroepen delen daarom één onthulling.
    */
   revealListing(listingId: string): Promise<Logbook> {
@@ -237,7 +348,7 @@ export class OpenBodStore {
   /**
    * Gunning (protocol.md §4, §5a). Legt de keuze vast en geeft uitsluitend de
    * identiteitsenvelop van het gekozen bod vrij. De instantie kan die envelop
-   * zelf niet openen — alleen de verkoper heeft de sleutel — maar dát zij is
+   * zelf niet openen, want alleen de verkoper heeft de sleutel, maar dát zij is
    * vrijgegeven wordt gelogd, zodat achteraf zichtbaar is wanneer de identiteit
    * van welke bieder beschikbaar kwam (I12).
    */
@@ -266,6 +377,112 @@ export class OpenBodStore {
     rec.logbook = generatePublicLogbook(rec.listing, rec.revealed ?? [], rec.chain.all(), this.keypair);
 
     return { bidId, identityEnvelope: sealed.identityEnvelope, logbook: rec.logbook };
+  }
+
+  /**
+   * Afhandeling buiten deze procedure om (E7-S2). De verkoop is ingetrokken,
+   * onderhands gesloten of anderszins gestopt zonder gunning via de deadline.
+   *
+   * Dit bestaat omdat het ontbreken ervan een van de klachten uit het VEH-meldpunt
+   * is: een gesloten inschrijving waarbij de woning tóch buiten de procedure om
+   * wordt verkocht, en waarvan achteraf niets te reconstrueren valt. Het systeem
+   * kan zo'n verkoop niet verhinderen, want het gebeurt per definitie buiten het
+   * systeem, maar het kan wél afdwingen dat de procedure een eindstatus met een
+   * opgegeven reden krijgt, en dat alle bieders daarover automatisch het logboek
+   * ontvangen. Een makelaar die dit niet vastlegt, laat een aantoonbaar
+   * onafgemaakt logboek achter (I13).
+   *
+   * Nog niet onthulde biedingen blijven verzegeld: ze worden niet alsnog geopend,
+   * want de procedure waarvoor ze bedoeld waren gaat niet door. Wat de bieders
+   * krijgen is het bewijs dát hun verzegelde bod er stond en dat het nooit is
+   * geopend, precies het punt waarop zij nu in het duister tasten.
+   */
+  abortListing(listingId: string, reason: string): Logbook {
+    const rec = this.record(listingId);
+    const previousStatus = rec.listing.status;
+    if (previousStatus === "onherroepelijk" || previousStatus === "buiten_procedure") {
+      throw new InvalidTransitionError(`procedure is al afgerond met status ${previousStatus}`);
+    }
+    if (rec.revealing) {
+      throw new InvalidTransitionError("onthulling loopt; probeer het zo opnieuw");
+    }
+    const trimmed = reason.trim();
+    if (trimmed.length === 0) {
+      throw new RuleViolationError("een reden is verplicht bij afhandeling buiten de procedure");
+    }
+
+    const at = new Date().toISOString();
+    rec.chain.append(
+      "buiten_procedure_afgehandeld",
+      sha256Hex(canonicalize({ listingId, previousStatus, reason: trimmed })),
+    );
+    rec.listing.status = "buiten_procedure";
+    rec.listing.buitenProcedureReden = trimmed;
+    rec.listing.buitenProcedureAt = at;
+    rec.logbook = generatePublicLogbook(rec.listing, rec.revealed ?? [], rec.chain.all(), this.keypair);
+    return rec.logbook;
+  }
+
+  /** Is het logboek van deze woning al automatisch verstuurd? */
+  logbookDelivery(listingId: string): DeliveryResult | undefined {
+    return this.record(listingId).delivery;
+  }
+
+  /**
+   * Automatische verstrekking van het biedlogboek (E4-S3). Sinds 2023 is het
+   * biedlogboek verplicht, maar in de praktijk kreeg ongeveer een derde van de
+   * kopers het, en dan meestal pas na erom te vragen. Daarom is verstrekken
+   * hier geen knop maar een gevolg: zodra de procedure een eindstatus bereikt
+   * (gegund of buiten de procedure afgehandeld) gaat het logboek vanzelf naar
+   * alle betrokkenen.
+   *
+   * De verzending zelf wordt een regel in de hashketen. Dat is het punt: "ik heb
+   * nooit een logboek gekregen" wordt daarmee een controleerbare bewering in
+   * plaats van welles-nietes. In de logregel staan alleen pseudonieme refs, dus
+   * er komen geen persoonsgegevens in de keten (I14).
+   *
+   * Idempotent, net als `revealListing`: de scheduler roept dit herhaald aan en
+   * mag geen tweede `logboek_verstuurd` in de keten veroorzaken.
+   */
+  deliverLogbook(listingId: string): Promise<DeliveryResult> {
+    const rec = this.record(listingId);
+    if (rec.delivery) return Promise.resolve(rec.delivery);
+    if (rec.delivering) return rec.delivering;
+    if (rec.listing.status !== "onherroepelijk" && rec.listing.status !== "buiten_procedure") {
+      return Promise.reject(
+        new InvalidTransitionError(`logboek wordt pas verstuurd bij een eindstatus, niet bij ${rec.listing.status}`),
+      );
+    }
+    if (!rec.logbook) {
+      return Promise.reject(new InvalidTransitionError("er is nog geen logboek om te versturen"));
+    }
+    // Mislukt de bezorging (identity-backend onbereikbaar), dan geven we de
+    // sleutel weer vrij zodat de scheduler het opnieuw probeert. Er komt dan
+    // ook geen `logboek_verstuurd` in de keten te staan: de keten liegt liever
+    // niet dan dat zij een verzending claimt die niet plaatsvond.
+    rec.delivering = this.performDelivery(rec).finally(() => {
+      rec.delivering = undefined;
+    });
+    return rec.delivering;
+  }
+
+  private async performDelivery(rec: ListingRecord): Promise<DeliveryResult> {
+    const logbook = rec.logbook!;
+    // Ook ingetrokken biedingen tellen mee: wie heeft meegedaan, is betrokkene.
+    const subs = new Set([...rec.bids.values()].map((b) => b.bidderSub));
+    if (rec.listing.sellerSub) subs.add(rec.listing.sellerSub);
+    const recipients = [...subs];
+
+    await this.deliveryChannel.deliver({ listingId: rec.listing.id, recipients, logbook });
+
+    const deliveredAt = new Date().toISOString();
+    const recipientRefs = recipients.map(bidderRef).sort();
+    const entry = rec.chain.append(
+      "logboek_verstuurd",
+      sha256Hex(canonicalize({ rootHash: logbook.rootHash, recipientRefs })),
+    );
+    rec.delivery = { listingId: rec.listing.id, recipientRefs, deliveredAt, logIndex: entry.index };
+    return rec.delivery;
   }
 
   getRevealed(listingId: string): RevealedBid[] {

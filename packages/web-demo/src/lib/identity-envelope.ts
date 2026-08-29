@@ -4,7 +4,7 @@
  * De identiteit van de bieder reist náást het bod, niet erin. Het bod gaat op de
  * deadline via de timelock voor iedereen open; de identiteit juist niet. Zij wordt
  * versleuteld naar de publieke sleutel van de verkoper, dus de instantie en de
- * makelaar kunnen haar op geen enkel moment lezen — zij hebben de sleutel niet.
+ * makelaar kunnen haar op geen enkel moment lezen, want zij hebben de sleutel niet.
  *
  * Schema: ECDH op P-256 met een eenmalig sleutelpaar per envelop, HKDF-SHA-256 naar
  * een AES-256-GCM-sleutel. Het eenmalige sleutelpaar zorgt dat twee enveloppen naar
@@ -107,7 +107,7 @@ const STORAGE_PREFIX = "openbod_seller_key_";
  * De private sleutel van de verkoper hoort bij hem, niet bij de server. In deze demo
  * is dat localStorage; kwijt is kwijt, en dan blijft de identiteit van de winnende
  * bieder onleesbaar. Een echte instantie geeft hier een exporteerbare sleutel met
- * een herstelpad — maar nooit een sleutel die de operator ook heeft.
+ * een herstelpad, maar nooit een sleutel die de operator ook heeft.
  */
 export function saveSellerKey(listingId: string, privateJwk: string) {
   localStorage.setItem(STORAGE_PREFIX + listingId, privateJwk);
@@ -115,4 +115,19 @@ export function saveSellerKey(listingId: string, privateJwk: string) {
 
 export function loadSellerKey(listingId: string): string | null {
   return localStorage.getItem(STORAGE_PREFIX + listingId);
+}
+
+/**
+ * De woningen waarvan deze browser de verkopersleutel heeft. Dit is wat de
+ * beheeromgeving als "van mij" beschouwt. Bewust geen serverbegrip: de server
+ * weet niet wie de verkoper is en hoort dat ook niet te weten, dus het bezit
+ * van de sleutel is hier het enige eerlijke antwoord op die vraag.
+ */
+export function listSellerKeyListingIds(): string[] {
+  const ids: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(STORAGE_PREFIX)) ids.push(key.slice(STORAGE_PREFIX.length));
+  }
+  return ids;
 }

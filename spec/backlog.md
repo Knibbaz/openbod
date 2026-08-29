@@ -47,7 +47,56 @@ Testcases:
 - TC1: een gewijzigde huisstijl verschijnt op de webpagina en in de PDF.
 - TC2: een integriteitscheck van het logboek blijft identiek voor en na een opmaakwijziging.
 
+### E1-S4 Woninggegevens importeren uit open bronnen
+Als makelaar wil ik een adres kunnen opzoeken en de kenmerken automatisch ingevuld krijgen, zodat ik een woning in een minuut klaarzet in plaats van elk veld over te typen.
+
+Bron is bewust niet Funda maar open overheidsdata: de PDOK-locatieserver voor adressen, de BAG van het Kadaster voor bouwjaar, oppervlakte en gebruiksdoel, en EP-Online bij de RVO voor het energielabel. Die gegevens zijn vrij te gebruiken en door iedereen na te trekken, wat precies past bij een systeem dat niet op vertrouwen leunt. Vraagprijs, foto's en omschrijving blijven handwerk van de makelaar, want die zijn van hem.
+
+**Status: gebouwd voor adres, woonoppervlak en bouwjaar.** Beide bronnen bleken zonder sleutel of registratie te werken: de locatieserver (`api.pdok.nl/bzk/locatieserver/search/v3_1`) voor het zoeken, en de BAG OGC API v2 (`api.pdok.nl/kadaster/bag/ogc/v2`) voor de gebruiksoppervlakte van het verblijfsobject en het bouwjaar van het pand. De opzoeking draait in de core (`packages/core/src/adres/pdok.ts`), niet in de browser: PDOK ziet dan de instantie in plaats van elke makelaar, de drie verzoeken die één opzoeking kost worden tot één antwoord samengevoegd, en de instantie kan begrenzen hoeveel verkeer zij naar een gratis publieke voorziening stuurt.
+
+Nog open: het energielabel uit EP-Online (RVO), waarvoor wél een sleutel nodig is, en het perceeloppervlak, dat niet in de BAG zit maar in de kadastrale registratie en niet vrij beschikbaar is. Beide velden vult de makelaar voorlopig zelf.
+
+Acceptatiecriteria:
+- Een adres zoeken vult adres en kenmerken in het formulier, zonder ze vast te zetten: de makelaar kan alles corrigeren.
+- De herkomst van de ingevulde gegevens staat bij het veld, zodat niemand denkt dat het systeem het verzonnen heeft.
+
+Testcases:
+- TC1: een bestaand adres levert kenmerken die overeenkomen met de bron.
+- TC2: een onbekend adres of een bron die niet antwoordt, blokkeert het handmatig invullen niet.
+
+### E1-S5 Aanbod importeren dat de makelaar zelf mag aanleveren
+Als makelaar wil ik mijn bestaande aanbod importeren uit mijn eigen systeem, zodat ik niet dubbel werk doe om mee te draaien.
+
+De juiste route is een bestand of koppeling die de makelaar zelf aanlevert, want het is zijn eigen aanbod: een export uit zijn CRM, of een feed van zijn eigen website. Funda scrapen is geen route. Funda heeft geen open API voor derden; er is een Partner API (`partnerapi.funda.nl/feeds/Aanbod.svc/[key]/`) waarvoor Funda een sleutel uitgeeft en waarvan de documentatie niet publiek is, plus een XML-koppeling waarmee makelaars hun aanbod juist naar Funda sturen. Een makelaar die zijn eigen sleutel invult zou dus kunnen werken, mits de voorwaarden van Funda dat toestaan, en dat is een vraag aan Funda en niet aan de code. Zonder sleutel resteert scrapen, en dat botst met hun voorwaarden, met het databankenrecht en met het auteursrecht op foto's en teksten van de makelaar of de fotograaf.
+
+Dit loont pas als er een makelaar aan tafel zit die het echt wil gebruiken.
+
+Acceptatiecriteria:
+- Import via een aangeleverd bestand in een gedocumenteerd formaat werkt zonder dat de core partij-specifieke koppelingen kent.
+- Een geimporteerde woning is niet te onderscheiden van een handmatig aangemaakte, dossierhash inbegrepen.
+
+Testcases:
+- TC1: een importbestand levert woningen die de conformance-suite haalt.
+- TC2: een importbestand met ontbrekende verplichte velden faalt met een aanwijsbare regel, niet met een half aangemaakte woning.
+
 ## E2. Verzegeld bieden (commit)
+
+### E2-S0 Lekcheck over de volledige toestand
+Als toetser wil ik kunnen aantonen dat een waarde nergens in de instantie staat, zodat "de operator kan niet meekijken" een controleerbare eigenschap is in plaats van een belofte.
+
+Acceptatiecriteria:
+- Een test dumpt de complete objectgraaf van de store, inclusief Maps en interne velden, en zoekt daarin naar de echte waarden.
+- Vóór de deadline komen bedrag, motivatie, naam en contact nergens voor.
+- Na de onthulling hoort het bedrag er wél te staan; naam en contact nog steeds niet.
+- Ook na gunning zijn naam en contact afwezig: de envelop gaat de deur uit zonder geopend te zijn.
+- De test bewijst zichzelf door aan te tonen dat de dump de commitment wél vindt, dus dat afwezigheid geen onbereikbaarheid is.
+
+Testcases:
+- TC1: dump vóór de deadline bevat geen enkele plaintextwaarde.
+- TC2: dump na de onthulling bevat het bedrag, maar geen identiteit.
+- TC3: dump na gunning bevat nog steeds geen identiteit.
+- TC4: het openbare logboek bevat het bedrag en geen motivatie.
+- TC5: een ingetrokken bod blijft onleesbaar en blijft zichtbaar in de keten (I6).
 
 ### E2-S1 Een verzegeld bod plaatsen
 Als bieder wil ik mijn bod versleuteld indienen, zodat niemand het vóór de deadline kan lezen.
@@ -129,12 +178,18 @@ Testcases:
 Als bieder en verkoper wil ik het volledige logboek automatisch ontvangen na afronding, zodat ik het niet hoef op te vragen.
 
 Acceptatiecriteria:
-- Bij het onherroepelijk worden gaat het logboek naar alle betrokkenen.
+- Bij het bereiken van een eindstatus (onherroepelijk of buiten_procedure) gaat het logboek naar alle betrokkenen, inclusief bieders die hun bod hadden ingetrokken.
 - Het logboek bevat de NTA 8061-velden.
+- De verzending is zelf een logregel (`logboek_verstuurd`) met alleen pseudonieme ontvangers.
+- Verzending is idempotent; een mislukte poging levert geen logregel op en wordt opnieuw geprobeerd.
+- De core kent geen e-mailadressen: zij stuurt pseudonieme subjects naar de identiteitslaag, die als enige de koppeling heeft.
 
 Testcases:
 - TC1: alle bieders en de verkoper ontvangen het logboek zonder erom te vragen.
 - TC2: het openbare logboek is geanonimiseerd.
+- TC3: herhaald en gelijktijdig aanroepen levert precies een `logboek_verstuurd`-regel op.
+- TC4 (beveiliging): een mislukte bezorging claimt geen verzending in de keten.
+- TC5 (beveiliging): er wordt niets verstuurd zolang de procedure nog loopt.
 
 ## E5. Identiteit
 
@@ -144,10 +199,14 @@ Als bieder wil ik inloggen via een e-maillink, zodat ik zonder wachtwoord kan bi
 Acceptatiecriteria:
 - De identity-backend geeft een OIDC-token met een pseudonieme sub op niveau email.
 - De core verifieert het token en gebruikt alleen sub.
+- De sub is `HMAC-SHA256(pepper, genormaliseerd adres)`, niet een kale hash van het adres. Een e-mailadres heeft te weinig entropie voor `sha256(adres)`: met een lijst kandidaat-adressen is zo'n hash gewoon terug te rekenen, en dan is "de core kent geen e-mailadressen" een bewering over opslag in plaats van over afleidbaarheid.
+- Zonder pepper start de backend in productie niet op.
 
 Testcases:
 - TC1: een geldige magic link levert een sessie en een token op.
 - TC2 (beveiliging): een verlopen of hergebruikte link wordt geweigerd.
+- TC3 (beveiliging): een sub is niet te raden uit het adres zonder de pepper, ook niet met een woordenlijst van gebruikelijke varianten.
+- TC4 (beveiliging): een ontbrekende pepper in productie en een te korte pepper worden geweigerd.
 
 ### E5-S2 Pluggable identiteit
 Als operator wil ik later iDIN toevoegen zonder de core te wijzigen, zodat de biedlogica identiek blijft.
@@ -184,6 +243,21 @@ Testcases:
 - TC1: met de instelling aan toont de pagina een correct aantal.
 - TC2 (beveiliging): met de instelling uit is het aantal niet opvraagbaar via de API.
 
+### E6-S3 Het logboek meelezen tijdens de biedfase
+Als bieder wil ik tijdens de inschrijving de logboekregels kunnen zien, zodat een makelaar mij niet aan de telefoon kan vertellen dat er nog vier hogere biedingen liggen.
+
+Dit is de zichtbaarheid uit E6-S2 doorgetrokken van een telling naar de regels zelf: tijdstip, pseudoniem en wat er gebeurde (bod geplaatst, aangepast, ingetrokken). Bedragen blijven eruit, want die zijn tot de sluitingstijd voor niemand leesbaar, ook niet voor de instantie. Het richt zich op de klacht uit het VEH-meldpunt dat kopers tegen elkaar worden uitgespeeld met biedingen waarvan later niet blijkt of ze bestonden.
+
+De keerzijde hoort in de afweging: biedritme is ook informatie. Wie ziet dat er in het laatste uur drie biedingen bijkomen, leidt daaruit af dat het druk is. Daarom instelbaar per woning, net als E6-S2, en niet standaard aan.
+
+Acceptatiecriteria:
+- Met de instelling aan tonen de regels tijdstip, type en pseudoniem, nooit bedragen of identiteiten.
+- De getoonde regels komen uit dezelfde hashketen als het eindlogboek en zijn dus achteraf narekenbaar.
+
+Testcases:
+- TC1: een bieder ziet dezelfde regels terug in het eindlogboek, op dezelfde plek in de keten.
+- TC2 (beveiliging): met de instelling uit levert het endpoint niets, ook niet voor een ingelogde bieder.
+
 ## E7. Gunning en afronding
 
 ### E7-S1 Biedingen bekijken en gunnen
@@ -197,6 +271,25 @@ Testcases:
 - TC1: de verkoper ziet het volledige pakket per bieder.
 - TC2: gunnen legt de keuze vast in het logboek.
 
+### E7-S2 Afhandeling buiten de procedure om
+Als bieder wil ik dat een verkoop die buiten dit biedproces om wordt afgehandeld een vastgelegde eindstatus met reden krijgt, zodat een inschrijving niet zonder uitleg kan stilvallen.
+
+Dit is een van de klachten uit het meldpunt van Vereniging Eigen Huis: een gesloten inschrijving waarbij de woning toch buiten de procedure om wordt verkocht. Het systeem kan zo'n verkoop niet verhinderen, maar het kan wel afdwingen dat er iets controleerbaars van overblijft.
+
+Acceptatiecriteria:
+- De overgang naar status `buiten_procedure` vereist een opgegeven reden, die onverkort in het openbare logboek komt.
+- De gebeurtenis wordt gelogd als `buiten_procedure_afgehandeld`.
+- Nog niet onthulde biedingen blijven verzegeld en worden niet alsnog geopend.
+- Het logboek gaat daarna automatisch naar alle bieders (E4-S3).
+
+Testcases:
+- TC1: afbreken levert status `buiten_procedure`, een logregel en een logboek met de reden op.
+- TC2: bieders krijgen het logboek, ook zonder gunning.
+- TC3: niet onthulde biedingen staan als `bid_placed` in de keten en niet als `bid_revealed`.
+- TC4 (beveiliging): een lege reden wordt geweigerd.
+- TC5 (beveiliging): na afbreken wordt een nieuw bod geweigerd.
+- TC6 (beveiliging): een reeds gegunde procedure kan niet alsnog als buiten de procedure worden weggeschreven.
+
 ## E8. Verificatie voor gebruikers
 
 ### E8-S1 Zelf een bod en logboek verifieren
@@ -209,6 +302,40 @@ Acceptatiecriteria:
 Testcases:
 - TC1: een geldig logboek plus ontvangstbewijs verifieert.
 - TC2 (beveiliging): een gemanipuleerd logboek faalt de verifier, met aanwijzing van de eerste kapotte regel.
+
+### E8-S2 Demoscenario dat de garanties laat zien
+Als bezoeker wil ik een uitgespeeld scenario zien waarin per stap staat wat elke partij op dat moment kan zien, zodat ik de garanties begrijp zonder de code te lezen.
+
+**Status: nog niet gebouwd, en het heeft echt werk nodig.** De onderliggende bewijzen bestaan wel (zie de lekcheck in `packages/core/test/invariants/geen-lek.test.ts` en de subject-tests in `packages/identity/test/subject.test.ts`), maar er is nog geen scenario dat ze aan een bezoeker toont.
+
+Het lastige zit niet in het script maar in de eis eronder: de tekst moet uit de echte toestand komen, niet uit proza. Een geschreven rondleiding ("Alice biedt nu 510.000") bewijst niets, want die tekst klopt ook als het systeem liegt. Wat overtuigt, is een dump van wat de instantie op dat moment werkelijk in handen heeft, met de echte waarden als zoekterm en nul treffers. Dat vraagt om een vorm waarin de uitvoer gegenereerd wordt en de uitleg eromheen geschreven, zonder dat die twee uit elkaar kunnen lopen.
+
+Openstaande vragen voordat dit gebouwd kan worden:
+- Draait het scenario tegen een echte instantie (traag, want drand-rondes van 3s, maar eerlijk) of tegen vastgelegde uitvoer (snel, maar dan moet aantoonbaar zijn dat die uitvoer echt is)?
+- Hoe voorkom je dat de uitlegtekst na een codewijziging stilletjes niet meer klopt bij de uitvoer?
+- Hoort dit in de frontend, in een CLI, of allebei met dezelfde bron?
+
+Acceptatiecriteria (concept):
+- Per stap is zichtbaar wat identity weet, wat de core weet en wat de verkoper kan openen.
+- De getoonde uitvoer is gegenereerd uit een echte doorloop, niet met de hand geschreven.
+- Een poging tot vroeg ontsleutelen en een poging tot openen van de identiteitsenvelop staan er zichtbaar als mislukt in.
+- De lekcheck over de volledige toestand hoort bij de uitvoer.
+
+## E11. Open bieden als tweede verkoopmethode
+
+### E11-S1 Openbaar bieden naar Noors voorbeeld
+Als verkoper wil ik kunnen kiezen voor openbaar bieden, waarbij het hoogste actuele bod voor iedereen zichtbaar is, zodat kopers niet blind hoeven te overbieden.
+
+Het protocol kan dit aan zonder zijn kern op te geven: `verkoopmethode` is al een veld, en bij open bieden vervalt alleen de timelock. De hashketen, de pseudoniemen, het narekenbare logboek en de automatische verstrekking blijven staan, en zijn hier harder nodig dan bij verzegeld bieden, want bij open bieden moet aantoonbaar zijn dat een getoond bod echt van een echte bieder kwam.
+
+Openstaande vragen voordat dit gebouwd kan worden:
+- Een bod van een consument is in Nederland niet bindend tot de akte getekend is, met daarna drie dagen bedenktijd. In Noorwegen is open bieden wettelijk ingebed met bindende biedingen en korte acceptatietermijnen. Zonder die binding kan een bod de prijs opdrijven en daarna verdwijnen, precies het nepbod dat verzegeld bieden onmogelijk maakt. Welke maatregel vervangt die binding hier?
+- Wat doet open bieden met de prijs in een markt met tekort? Dat is de eerste vraag die een kritische lezer bij het ministerie stelt, en het antwoord hoort onderbouwd te zijn en niet aangenomen.
+- Blijven de invarianten I1 tot en met I15 gelden, of krijgt open bieden een eigen set die aantoonbaar even sterk is op de punten die overblijven?
+
+Acceptatiecriteria (concept):
+- Verzegeld en open bieden draaien op dezelfde core, met dezelfde keten en hetzelfde logboek.
+- Bij open bieden is per bod aantoonbaar dat het van een geverifieerde bieder kwam en wanneer het binnenkwam.
 
 ## E9. Federatie en conformiteit
 
@@ -251,9 +378,9 @@ Testcases:
 
 ## Prioritering voor de demo (MVP)
 
-Minimale set om het verhaal te tonen en een subsidieaanvraag te onderbouwen: E1-S1, E1-S2, E2-S1, E2-S2, E3-S1, E3-S2, E4-S1, E4-S3, E5-S1, E6-S2, E7-S1, E8-S1.
+Minimale set om het verhaal te tonen en een subsidieaanvraag te onderbouwen: E1-S1, E1-S2, E2-S1, E2-S2, E3-S1, E3-S2, E4-S1, E4-S3, E5-S1, E6-S2, E7-S1, E7-S2, E8-S1.
 
-Later: E1-S3, E4-S2, E5-S2, E6-S1, E9, E10.
+Later: E1-S3, E1-S5, E4-S2, E5-S2, E6-S1, E6-S3, E8-S2, E9, E10, E11.
 
 ## Testsoorten
 

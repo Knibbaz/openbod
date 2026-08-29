@@ -1,7 +1,7 @@
 # De demo-instantie draaien
 
 Eén publieke demo-instantie, drie containers, één poort naar buiten. Bedoeld om te
-kunnen klikken zonder te installeren — niet als productiesysteem. Zie
+kunnen klikken zonder te installeren, niet als productiesysteem. Zie
 "Bewuste beperkingen" hieronder voordat je hier iets echts op zet.
 
 ## Starten
@@ -10,6 +10,13 @@ kunnen klikken zonder te installeren — niet als productiesysteem. Zie
 cp deploy/.env.example deploy/.env      # vul PUBLIC_URL in
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 ```
+
+Zet `DEMO_INSTANCE=true` in `deploy/.env` als dit een demonstratie is. Dan vult de
+core zichzelf met een scenario van vijf woningen in verschillende fasen en wist zij
+zichzelf elk half uur, en toont identity de magic link op het scherm in plaats van
+hem te mailen. Dat laatste betekent dat iedereen kan inloggen als elk e-mailadres,
+dus laat dit uit op een instantie waar echte biedingen binnenkomen; die heeft dan
+wel een mailserver nodig.
 
 De stack luistert standaard op `127.0.0.1:8080`. Zet er een reverse proxy met TLS
 voor (Caddy, Traefik, nginx, of wat je host aanbiedt) die naar die poort wijst, en
@@ -20,6 +27,70 @@ Lokaal uitproberen kan zonder proxy:
 ```
 PUBLIC_URL=http://localhost:8080 docker compose -f deploy/docker-compose.yml up -d --build
 ```
+
+## Bijwerken: images ophalen of zelf bouwen
+
+Beide werken met dezelfde `docker-compose.yml`. Op een VPS zou ik het eerste doen.
+
+```
+# Gepubliceerde images ophalen (aanbevolen op een VPS)
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env pull
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+
+# Of zelf bouwen uit de broncode
+git pull
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+```
+
+Waarom ophalen boven bouwen: een build vraagt op een kleine VPS meer geheugen dan
+je denkt, en een build die halverwege omvalt laat een instantie achter die niet
+meer klopt met de code. De images worden gebouwd door
+`.github/workflows/publish.yml`, die eerst de tests draait, dus wat je ophaalt is
+een versie die het deed. Zelf bouwen blijft de juiste weg als je lokaal aan de
+code werkt, of als je host op ARM draait en er alleen amd64-images gepubliceerd
+zijn.
+
+`pull` is niet optioneel bij de eerste manier: `up -d` gebruikt een `latest` die
+al op de machine staat en merkt niet dat er een nieuwe is.
+
+Terugrollen na een slechte deploy: zet `OPENBOD_TAG` in `deploy/.env` op een
+versie of een commit (`v0.2.0`, `sha-1a2b3c4`) en draai `pull` plus `up -d`
+opnieuw. Daarom publiceert de workflow naast `latest` ook die twee.
+
+### Zelf publiceren
+
+De workflow duwt naar Docker Hub onder de naam uit `DOCKERHUB_USERNAME`, dus
+`<gebruiker>/openbod-api` en `<gebruiker>/openbod-web`. Eenmalig instellen in de
+repo onder Settings, Secrets and variables, Actions:
+
+- `DOCKERHUB_USERNAME`: je Docker Hub-gebruikersnaam.
+- `DOCKERHUB_TOKEN`: een access token uit Docker Hub (Account Settings, Personal
+  access tokens), niet je wachtwoord.
+
+Elke push naar `main` levert `latest` en `sha-<commit>`. Een git-tag die met `v`
+begint levert daarnaast de versienummers: `git tag v0.2.0 && git push --tags`.
+
+## Wat een herstart wist
+
+**Er is geen database.** `packages/core/src/store.ts` houdt alles in het geheugen,
+dus elke `up -d` die containers vervangt, en elke reboot van de VPS, wist de
+woningen, de biedingen en de logboeken. Voor een demo-instantie is dat geen
+bezwaar; die zet zichzelf toch elk half uur terug. Voor een instantie waar echte
+biedingen op binnenkomen is het een blokkade, en dan is Postgres achter dezelfde
+`OpenBodStore` de eerste stap.
+
+Twee dingen die je wél kunt vastzetten, en die je ook moet vastzetten als de
+instantie blijft staan:
+
+- `CORE_SIGNING_KEY`: de sleutel waarmee de instantie logboeken en
+  ontvangstbewijzen ondertekent. Zonder deze maakt de core bij elke start een
+  nieuwe, en dan faalt de verificatie van een logboek dat iemand gisteren
+  downloadde: de handtekening hoort bij een sleutel die niet meer bestaat. Dat is
+  precies het soort "u moet ons maar geloven" dat dit project wil uitbannen.
+- `IDENTITY_SIGNING_JWK`: de sleutel waarmee inlogtokens ondertekend worden.
+  Zonder deze is iedereen na een herstart uitgelogd.
+
+Beide staan met een generatiecommando in `deploy/.env.example`.
 
 ## Op een eigen VPS
 
@@ -98,6 +169,48 @@ elkaar alleen via een geverifieerd token kennen (ARCHITECTURE.md §5). Dat `core
 de JWKS intern ophaalt (`http://identity:4001/...`) terwijl de issuer de publieke
 URL is, is bewust: de issuer-claim is wat de bezoeker kan controleren.
 
+## Na een wijziging opnieuw uitrollen
+
+```
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+```
+
+`--build` is hier het woord dat ertoe doet. `--force-recreate` maakt nieuwe containers van de
+image die er al ligt en bouwt dus niets opnieuw: je krijgt precies dezelfde frontend terug, ook
+als de broncode veranderd is. Wil je zeker weten dat er niets uit de cache komt, gebruik dan
+`--build --no-cache`.
+
+Controleren wat er nu echt geserveerd wordt:
+
+```
+curl -s $PUBLIC_URL | grep -o '/assets/[^"]*\.js'
+```
+
+Verandert die bestandsnaam niet na een build, dan is de bundel niet vernieuwd.
+
+## Pseudonieme subjects
+
+`IDENTITY_SUBJECT_PEPPER` is het geheim waarmee een e-mailadres naar de `sub` gaat die
+de core als enige identiteitsgegeven ziet. Zonder pepper zou dat `sha256(adres)` zijn,
+en dat is met een lijst kandidaat-adressen gewoon terug te rekenen. De identity-backend
+weigert daarom in productie te starten als de pepper ontbreekt of korter is dan 32 bytes.
+
+Wissel je de pepper, dan krijgt iedereen een nieuwe `sub` en zijn bestaande biedingen
+niet meer aan hun bieder te koppelen. Behandel hem dus als een sleutel, niet als een
+instelling.
+
+## Automatische verstrekking van het biedlogboek
+
+Zodra een woning een eindstatus bereikt (gegund of buiten de procedure afgehandeld)
+stuurt de core het logboek vanzelf naar alle betrokkenen. Daarvoor moeten
+`CORE_DELIVERY_ENDPOINT` en `DELIVERY_SHARED_SECRET` gezet zijn; ontbreken ze, dan
+waarschuwt de core bij het starten en wordt er niets verstuurd.
+
+De core kent geen e-mailadressen en hoort ze niet te kennen. Zij stuurt pseudonieme
+subjects naar `identity`, die als enige de koppeling naar een adres heeft. Het gedeelde
+geheim beschermt dat endpoint: zonder geheim zou iedereen ermee kunnen uitvragen of
+een sub bekend is.
+
 ## Waarom `PUBLIC_URL` op drie plekken staat
 
 - **CORS-origin** voor core en identity.
@@ -109,18 +222,30 @@ URL is, is bewust: de issuer-claim is wat de bezoeker kan controleren.
 
 Deze staan ook in de UI, maar hier expliciet, want ze zijn geen bugs:
 
-- **Iedereen kan inloggen als elk e-mailadres.** Er is geen mailserver, dus
-  `IDENTITY_DEMO_MODE=true` toont de magic link direct in de response. Op een
+- **Iedereen kan inloggen als elk e-mailadres**, zolang `DEMO_INSTANCE=true` staat.
+  Er is geen mailserver, dus de magic link komt direct in de response. Op een
   instantie met echte biedingen moet deze schakelaar uit, en er een mailserver in.
+  Sinds deze schakelaar bestaat, staat hij standaard uit: een compose die je zonder
+  nadenken overneemt, zet geen open deur voor je klaar.
+- **De demo wist zichzelf**, ook met `DEMO_INSTANCE=true`. Elk half uur verdwijnt
+  alles wat er staat, inclusief biedingen van bezoekers. Dat staat in de UI, zodat
+  niemand zijn ontvangstbewijs kwijtraakt zonder gewaarschuwd te zijn.
 - **Alles staat in het geheugen.** `packages/core/src/store.ts` is een
   in-memory-referentie. Herstart je de container, dan zijn de woningen, biedingen
   en logboeken weg.
-- **De ondertekensleutel van de instantie is vluchtig.** `packages/identity/src/keys.ts`
-  genereert bij elke start een nieuw sleutelpaar, dus bestaande tokens vervallen bij
-  een herstart. Een echte instantie heeft een persistente sleutel met rotatiebeleid.
+- **Zonder `CORE_SIGNING_KEY` en `IDENTITY_SIGNING_JWK` zijn de sleutels vluchtig.**
+  Dan genereren core en identity er bij elke start nieuwe: bestaande tokens vervallen
+  en eerder verstrekte logboeken zijn niet meer te verifieren. Zie "Wat een herstart
+  wist" hierboven. Rotatiebeleid (meerdere geldige sleutels tegelijk, netjes uitfaseren)
+  is er nog niet.
 - **Geen publieke verankering.** De root-hash wordt nog nergens extern gepubliceerd
   (zie de backlog). De hashketen en de handtekening zijn er wel, en de losse
   `verifier`-CLI rekent ze na.
+- **Het logboek wordt niet echt gemaild.** De automatische verstrekking (E4-S3)
+  werkt volledig: de core stuurt de bezorgopdracht naar identity en legt de
+  verzending vast als `logboek_verstuurd` in de hashketen. Alleen de laatste stap,
+  het daadwerkelijke mailen, schrijft naar de serverlog omdat er geen mailserver
+  is aangesloten. Zie `sendLogbookMail` in `packages/identity/src/server.ts`.
 
 De timelock is géén vereenvoudiging: die praat met het echte publieke
 drand-quicknet, ook hier. De container heeft dus uitgaande toegang tot

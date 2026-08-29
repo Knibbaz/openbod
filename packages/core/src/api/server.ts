@@ -3,18 +3,24 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
+import { InstanceKeypair } from "../log/signing.js";
 import {
   OpenBodStore,
   ListingNotFoundError,
   InvalidTransitionError,
   RuleViolationError,
 } from "../store.js";
+import { ConsoleLogbookDelivery, HttpLogbookDelivery, type LogbookDelivery } from "../logbook/delivery.js";
 import { verifyIdentityToken } from "./identity.js";
+import { demoStatus, startDemo } from "../demo/scenario.js";
+import { AdresBronError, haalAdresKenmerken, zoekAdressen } from "../adres/pdok.js";
 import {
+  abortBody,
   awardBody,
   awardResponse,
   bidParams,
   createListingBody,
+  deliveryResponse,
   instanceKeyResponse,
   listingIdParams,
   listingListResponse,
@@ -24,20 +30,75 @@ import {
   proofResponse,
   receiptResponse,
   sealedBidBody,
+  adresKenmerkenResponse,
+  adresIdParams,
+  adresSuggestieResponse,
+  adresZoekQuery,
 } from "./schemas.js";
 
 const PORT = Number(process.env.CORE_PORT ?? 4000);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+/**
+ * Demo-instantie: zet zichzelf elk half uur terug en vult zichzelf met een
+ * scenario. Staat standaard uit, want een instantie die echte biedingen draagt
+ * mag zichzelf nooit wissen en haar core hoort nooit zelf te verzegelen.
+ */
+const DEMO_MODE = process.env.CORE_DEMO === "true";
 
 // Standaard alleen de lokale demo-frontend. In productie moet dit expliciet
-// naar het echte domein van de deployment wijzen — geen wildcard-CORS voor
+// naar het echte domein van de deployment wijzen: geen wildcard-CORS voor
 // een API die met een bearer-token authenticeert.
 const ALLOWED_ORIGINS = (process.env.CORE_ALLOWED_ORIGINS ?? "http://localhost:5173")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
 
-export const store = new OpenBodStore();
+/**
+ * Bezorgkanaal voor het biedlogboek (E4-S3). De core kent geen e-mailadressen;
+ * alleen de identity-backend kan een pseudonieme sub terugvertalen naar een
+ * adres. Zonder configuratie valt dit terug op een luide no-op, zodat een
+ * instantie die het logboek feitelijk niet verstrekt dat ook laat merken.
+ */
+function buildDeliveryChannel(): LogbookDelivery {
+  const endpoint = process.env.CORE_DELIVERY_ENDPOINT;
+  const secret = process.env.DELIVERY_SHARED_SECRET;
+  if (!endpoint || !secret) {
+    if (IS_PRODUCTION) {
+      console.warn(
+        "[core] WAARSCHUWING: CORE_DELIVERY_ENDPOINT of DELIVERY_SHARED_SECRET ontbreekt. " +
+          "Biedlogboeken worden NIET automatisch verstrekt (E4-S3).",
+      );
+    }
+    return new ConsoleLogbookDelivery();
+  }
+  return new HttpLogbookDelivery(endpoint, secret);
+}
+
+/**
+ * De ondertekensleutel van deze instantie. Zonder `CORE_SIGNING_KEY` maakt de
+ * core er een per start, en dan is een logboek dat gisteren gedownload is
+ * vandaag niet meer te verifieren: de handtekening hoort dan bij een sleutel
+ * die niet meer bestaat. Voor een instantie die blijft staan is dat geen
+ * detail maar het verschil tussen bewijs en een bewering.
+ *
+ * Maak er een met:
+ *   openssl genpkey -algorithm ed25519
+ */
+function buildKeypair(): InstanceKeypair {
+  const pem = process.env.CORE_SIGNING_KEY;
+  if (!pem?.trim()) {
+    if (IS_PRODUCTION) {
+      console.warn(
+        "[core] WAARSCHUWING: CORE_SIGNING_KEY ontbreekt. Er is een tijdelijke sleutel gemaakt, " +
+          "dus eerder verstrekte logboeken en ontvangstbewijzen zijn na deze herstart niet meer te verifieren.",
+      );
+    }
+    return new InstanceKeypair();
+  }
+  return new InstanceKeypair(pem);
+}
+
+export const store = new OpenBodStore(buildDeliveryChannel(), buildKeypair());
 
 const app = Fastify({
   logger: false,
@@ -60,7 +121,7 @@ await app.register(rateLimit, {
 /**
  * Elke response gaat door zijn zod-schema vóórdat hij verstuurd wordt.
  * `.parse` strip onbekende velden en gooit als een verplicht veld ontbreekt
- * of het verkeerde type heeft — dus een programmeerfout die per ongeluk een
+ * of het verkeerde type heeft, dus een programmeerfout die per ongeluk een
  * intern veld (zoals `bidderSub`) zou lekken, faalt hard in plaats van
  * stilletjes de deur uit te gaan.
  */
@@ -107,9 +168,67 @@ app.post(
 );
 
 app.get("/listings", async (_req, reply) => {
-  const listings = store.allListings().map((listing) => publicListingView(listing.id));
+  // Een woning die nog niet gepubliceerd is, hoort niet in de publieke lijst:
+  // de makelaar is hem aan het voorbereiden en er valt nog niet op te bieden.
+  const listings = store
+    .allListings()
+    .filter((listing) => listing.status !== "aangemaakt")
+    .map((listing) => publicListingView(listing.id));
   return sendValidated(reply, listingListResponse, listings);
 });
+
+/**
+ * Draait deze instantie als demo? De frontend gebruikt dit om te tonen dat de
+ * gegevens verzonnen zijn en wanneer alles wordt teruggezet. Een echte instantie
+ * antwoordt hier `actief: false`, en dan verdwijnt die hele mededeling.
+ */
+app.get("/demo", async () => (DEMO_MODE ? demoStatus() : { actief: false }));
+
+/**
+ * Adressen zoeken in open overheidsbronnen (E1-S4), zodat een makelaar de
+ * kenmerken niet overtypt uit de brochure van een ander. Strenger begrensd dan
+ * de rest: hierachter zit een gratis publieke voorziening van PDOK, en die
+ * hoort niet leeg te lopen door één instantie.
+ */
+app.get(
+  "/adressen",
+  { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const parsed = adresZoekQuery.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      return sendValidated(reply, adresSuggestieResponse, await zoekAdressen(parsed.data.q));
+    } catch (err) {
+      return handleAdresError(err, reply);
+    }
+  },
+);
+
+app.get(
+  "/adressen/:adresId",
+  { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const parsed = adresIdParams.safeParse(req.params);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      return sendValidated(reply, adresKenmerkenResponse, await haalAdresKenmerken(parsed.data.adresId));
+    } catch (err) {
+      return handleAdresError(err, reply);
+    }
+  },
+);
+
+/**
+ * Een bron die hapert mag het aanmaken van een woning niet blokkeren: de
+ * frontend valt terug op handmatig invullen. Daarom 502 en geen 500, met een
+ * boodschap die zegt wie er niet antwoordde.
+ */
+function handleAdresError(err: unknown, reply: FastifyReply) {
+  if (err instanceof AdresBronError || (err instanceof Error && err.name === "TimeoutError")) {
+    return reply.status(502).send({ error: "de adresbron is nu niet bereikbaar; vul de gegevens zelf in" });
+  }
+  return handleDomainError(err, reply);
+}
 
 app.get("/listings/:id", async (req, reply) => {
   const params = parseParamsOr400(listingIdParams, req.params, reply);
@@ -202,7 +321,7 @@ app.post(
 );
 
 /**
- * Gunning. Geeft alleen de identiteitsenvelop van het gekozen bod terug — een
+ * Gunning. Geeft alleen de identiteitsenvelop van het gekozen bod terug: een
  * blob die deze server niet kan openen, want de sleutel ligt bij de verkoper.
  *
  * Bekende beperking van de MVP: er is nog geen verkopersrol, dus dit endpoint
@@ -227,6 +346,73 @@ app.post(
     }
   },
 );
+
+/**
+ * Een voorbereide woning openstellen voor biedingen. Vanaf hier begint de keten
+ * en liggen de spelregels vast.
+ *
+ * Zelfde MVP-beperking als bij `/award`: dit endpoint controleert dát je
+ * ingelogd bent, niet dát je de verkoper of diens makelaar bent.
+ */
+app.post(
+  "/listings/:id/publish",
+  { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    try {
+      await requireIdentity(req);
+      return sendValidated(reply, listingPublicResponse, store.publishListing(params.id));
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+/**
+ * E7-S2: de procedure is buiten dit systeem om afgehandeld (ingetrokken,
+ * onderhands verkocht, teruggetrokken van de markt). Dit dwingt een eindstatus
+ * met opgegeven reden af en zet de automatische verstrekking van het logboek in
+ * gang, zodat bieders van een afgebroken inschrijving niet in het ongewisse
+ * blijven, een van de klachten uit het VEH-meldpunt.
+ *
+ * Zelfde MVP-beperking als bij `/award`: dit endpoint controleert dát je
+ * ingelogd bent, niet dát je de verkoper of diens makelaar bent.
+ */
+app.post(
+  "/listings/:id/abort",
+  { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    const parsed = abortBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      await requireIdentity(req);
+      return sendValidated(reply, logbookResponse, store.abortListing(params.id, parsed.data.reason));
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+/**
+ * Bewijs dat het logboek daadwerkelijk automatisch is verstuurd, met alleen
+ * pseudonieme refs. Publiek opvraagbaar: juist een bieder die beweert niets te
+ * hebben gekregen moet kunnen laten zien wat de instantie hierover claimt, en
+ * de bijbehorende `logboek_verstuurd`-regel staat in de keten (I14).
+ */
+app.get("/listings/:id/delivery", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    const delivery = store.logbookDelivery(params.id);
+    if (!delivery) return reply.status(404).send({ error: "logboek is nog niet verstuurd" });
+    return sendValidated(reply, deliveryResponse, delivery);
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
 
 app.get("/listings/:id/my-bid", async (req, reply) => {
   const params = parseParamsOr400(listingIdParams, req.params, reply);
@@ -311,16 +497,28 @@ app.setErrorHandler((err: FastifyError, _req, reply) => {
 });
 
 /**
- * E3-S1: automatische onthulling op de deadline, zonder actie van bieders.
- * Een productie-instantie doet dit met een betrouwbare scheduler/queue;
- * voor de MVP-demo volstaat een korte polling-lus.
+ * E3-S1 en E4-S3: automatische onthulling op de deadline en automatische
+ * verstrekking van het logboek zodra de procedure een eindstatus bereikt,
+ * beide zonder dat een bieder ergens om hoeft te vragen. Een productie-instantie
+ * doet dit met een betrouwbare scheduler/queue; voor de MVP-demo volstaat een
+ * korte polling-lus. Beide store-methodes zijn idempotent, dus herhaald
+ * aanroepen levert geen dubbele logregels op.
  */
 setInterval(() => {
-  void autoCloseAndReveal();
+  void tick();
 }, 2000);
 
-async function autoCloseAndReveal() {
+async function tick() {
   for (const listing of store.allListings()) {
+    // De lus houdt een momentopname vast en doet er met await's tijd over. In
+    // demo-modus kan de instantie zichzelf ondertussen terugzetten, en dan
+    // bestaat deze woning niet meer. Dat is geen fout maar een race, en zeker
+    // geen reden om de hele instantie te laten crashen.
+    try {
+      store.getListing(listing.id);
+    } catch {
+      continue;
+    }
     if (listing.status === "biedfase" && new Date(listing.deadline).getTime() <= Date.now()) {
       store.closeListing(listing.id);
     }
@@ -332,7 +530,23 @@ async function autoCloseAndReveal() {
         console.error(`[core] onthulling van ${listing.id} mislukt, probeer opnieuw`, err);
       }
     }
+    const isEindstatus = listing.status === "onherroepelijk" || listing.status === "buiten_procedure";
+    if (isEindstatus && !store.logbookDelivery(listing.id)) {
+      try {
+        const delivery = await store.deliverLogbook(listing.id);
+        console.log(
+          `[core] biedlogboek van ${listing.id} verstuurd naar ${delivery.recipientRefs.length} betrokkene(n)`,
+        );
+      } catch (err) {
+        console.error(`[core] versturen van logboek ${listing.id} mislukt, probeer opnieuw`, err);
+      }
+    }
   }
+}
+
+if (DEMO_MODE) {
+  console.log("[core] DEMO-modus: de instantie vult zichzelf en wist zichzelf elk half uur.");
+  startDemo(store);
 }
 
 if (IS_PRODUCTION && ALLOWED_ORIGINS.includes("http://localhost:5173") && ALLOWED_ORIGINS.length === 1) {

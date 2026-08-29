@@ -33,7 +33,7 @@ Een verzegeld ("blind") biedproces met commit-reveal, waarbij:
 1. Biedingen tot de deadline versleuteld zijn en voor niemand leesbaar, ook niet voor de operator of de makelaar.
 2. Op de deadline alles automatisch opengaat, zonder dat bieders daarvoor iets hoeven te doen.
 3. Elke gebeurtenis in een onwrikbaar logboek staat, zodat invoegen, wijzigen of verwijderen achteraf zichtbaar wordt.
-4. Het volledige logboek na afronding automatisch naar alle betrokkenen gaat.
+4. Het volledige logboek na afronding automatisch naar alle betrokkenen gaat, en die verzending zelf ook weer een regel in het logboek is.
 5. De hele codebasis open en verifieerbaar is, zodat iedereen kan controleren dat het systeem doet wat het belooft.
 
 ## 4. Hoe het werkt (het protocol)
@@ -56,9 +56,31 @@ Verzegelen van bedragen is niet genoeg. Als de makelaar bij de onthulling ziet w
 
 Wees hier precies over, want het verschil doet ertoe. Dat operator en makelaar de identiteit nooit kunnen lezen, is wiskundig afgedwongen. Dat de verkoper pas bij gunning kijkt, is dat niet: hij houdt zijn sleutel de hele tijd. Die grens is procedureel en gelogd, en het protocol zegt dat ook met zoveel woorden in plaats van het weg te laten.
 
+### Verstrekking als gevolg, niet als gunst
+
+Het biedlogboek is sinds 2023 verplicht, maar in de praktijk kreeg ongeveer een derde van de kopers en verkopers het, meestal pas na er zelf om te vragen. Een verplichting die je moet opeisen, werkt niet.
+
+In dit protocol is verstrekken daarom geen handeling van de makelaar maar een gevolg van de toestandsmachine. Zodra een woning een eindstatus bereikt, gegund of buiten de procedure afgehandeld, gaat het ondertekende logboek vanzelf naar alle bieders (ook wie zijn bod introk) en naar de verkoper. De verzending wordt zelf een regel in de hashketen, met uitsluitend pseudonieme ontvangers. Daarmee is "ik heb nooit een logboek gekregen" een controleerbare bewering geworden in plaats van welles-nietes.
+
+De instantie kent daarbij geen e-mailadressen. Zij stuurt een bezorgopdracht met pseudonieme subjects naar de identiteitslaag, die als enige de koppeling naar een adres heeft. De scheiding tussen biedlogica en identiteit blijft dus intact.
+
+### Een procedure kan niet stilvallen
+
+Een van de gemelde misstanden is een gesloten inschrijving waarbij de woning tóch buiten die procedure om wordt verkocht, waarna er van het proces niets te reconstrueren valt.
+
+Zo'n verkoop kan geen enkel systeem verhinderen: hij gebeurt per definitie buiten het systeem. Wat dit protocol wel afdwingt, is dat er iets controleerbaars van overblijft. De overgang naar de eindstatus `buiten_procedure` vereist een opgegeven reden, die onverkort in het openbare logboek komt, en levert een eigen logregel op. Biedingen die op dat moment nog verzegeld waren, blijven verzegeld: ze worden niet alsnog geopend voor een procedure die niet doorgaat. De bieders houden wel het bewijs dat hun bod er stond en dat het nooit geopend is, en zij krijgen automatisch het logboek.
+
+### Waarop er geboden werd, ligt ook vast
+
+Een bod is een reactie op een advertentie. Een logboek dat alleen bedragen vastlegt, laat een stille wijziging van het woonoppervlak of van de lijst achterblijvende zaken volledig ongemoeid, terwijl dat precies de vergelijking is waar de verkoper op afgaat.
+
+Daarom gaat er bij het openen een hash over alles wat aan bieders getoond is: kenmerken, omschrijving, foto's, prijsvorm, roerende zaken en de spelregels. Die hash zit in de openingsregel van het logboek en staat publiek bij de woning, dus iedereen kan narekenen dat het dossier is wat het was. Opmaak zit er nadrukkelijk niet in: huisstijl mag veranderen zonder de integriteit te raken.
+
 ### Identiteit als losse naad
 
 Login is een aparte backend die de biedlogica niet raakt. Die backend authenticeert de gebruiker en geeft een ondertekend token af (OIDC-stijl) met een subject-claim, dat de bied-core verifieert. In de demo is de loginmethode een magic link (verificatie van een e-mailadres, genoeg om het protocol te tonen). Later federeert hier een zwaarder middel in.
+
+De koppeling tussen persoon en systeem is een pseudoniem, en dat pseudoniem moet ook echt een pseudoniem zijn. Een kale `sha256(e-mailadres)` is dat niet: een adres heeft daarvoor te weinig entropie, dus met een ledenlijst of gewoon de gebruikelijke voornaam.achternaam-varianten reken je zo'n hash terug. Daarom is het `HMAC-SHA256(pepper, adres)`, met een pepper die de identiteitslaag nooit verlaat. Dat is het verschil tussen "wij slaan geen adressen op" en "wij kunnen niet achterhalen wie dit is", en alleen het tweede is een garantie.
 
 Belangrijk: DigiD is hier niet zomaar bruikbaar. Aansluiten op DigiD mag alleen als je een bij wet vastgestelde publieke taak uitvoert en BSN-gerechtigd bent, plus een jaarlijkse ICT-beveiligingsassessment doet. Een privaat biedplatform voldoet daar niet aan. Het private equivalent is iDIN (via de banken). Daarom blijft identiteit een naad: de demo toont waar een iDIN- of DigiD-waardig middel inschuift, zonder die kant nu te bouwen.
 
@@ -198,6 +220,8 @@ Onderstaande matrix is de opzet. De exacte clausules moeten tegen de werkelijke 
 | Gelijke behandeling | Alle biedingen verzegeld tot dezelfde deadline | Timelock-module |
 | Geen voortijdige inzage | Operator heeft de ontsleutelsleutel niet vóór de deadline | Timelock via publieke beacon |
 | Controleerbaarheid achteraf | Automatisch verstrekt logboek plus publieke verankering van de root-hash | Disclosure-module en anchoring |
+| Verstrekking aantoonbaar | Het logboek gaat bij een eindstatus vanzelf naar alle betrokkenen, en die verzending is zelf een logregel | `logbook/delivery.ts` plus de `logboek_verstuurd`-regel |
+| Vastgelegde afhandeling | Een verkoop die buiten de procedure om wordt afgehandeld krijgt een eindstatus met opgegeven reden | `abortListing` plus de `buiten_procedure_afgehandeld`-regel |
 | Vermelde verkoopmethode en prijsvorm | Verplichte velden bij het aanmaken van de woning | Listing-datamodel |
 
 ## 10. Scope van de demo (MVP)
@@ -209,8 +233,9 @@ Klein en echt, geen maquette:
 3. Een verzegeld bod plaatsen: bedrag, voorbehouden, overname-keuzes, motivatie.
 4. Aantal biedingen tonen (indien aangezet), maar geen bedragen.
 5. Op de deadline automatische onthulling via de timelock.
-6. Het logboek genereren, verifieerbaar maken en automatisch versturen.
+6. Het logboek genereren, verifieerbaar maken en automatisch versturen, met de verzending zelf als logregel.
 7. Een pagina die de integriteit uitlegt en laat verifiëren, met codefragmenten uit de repo op een vastgezette commit.
+8. De procedure buiten het biedproces om kunnen afsluiten, met verplichte reden en automatisch logboek.
 
 ## 11. Grenzen en wat dit niet is
 

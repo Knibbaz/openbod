@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" role="img">
+  <title>Illustratie van de demonstratiewoning</title>
+  
+  <defs>
+    <linearGradient id="lucht-deventer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c7dce9"/>
+      <stop offset="100%" stop-color="#eef3f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#lucht-deventer)"/>
+  <g fill="#ffffff" opacity="0.75" transform="translate(190 120) scale(1.1)">
+    <circle cx="0" cy="0" r="26"/><circle cx="30" cy="-10" r="34"/><circle cx="66" cy="2" r="24"/>
+    <rect x="-2" y="-2" width="70" height="26" rx="13"/>
+  </g><g fill="#ffffff" opacity="0.75" transform="translate(880 85) scale(0.8)">
+    <circle cx="0" cy="0" r="26"/><circle cx="30" cy="-10" r="34"/><circle cx="66" cy="2" r="24"/>
+    <rect x="-2" y="-2" width="70" height="26" rx="13"/>
+  </g>
+  <rect x="0" y="520" width="1200" height="155" fill="#c3c9c4"/>
+  <rect x="0" y="615" width="1200" height="12" fill="#ffffff" opacity="0.45"/>
+  <rect x="0" y="627" width="1200" height="48" fill="#000000" opacity="0.05"/>
+  <g transform="translate(120 520)">
+    <rect x="-5.7" y="-49.9" width="11.4" height="49.9" fill="#6b5642"/>
+    <circle cx="0" cy="-74.1" r="43.7" fill="#6d9463"/>
+    <circle cx="-28.5" cy="-54.1" r="30.4" fill="#6d9463" opacity="0.9"/>
+    <circle cx="28.5" cy="-57" r="28.5" fill="#6d9463" opacity="0.85"/>
+  </g>
+  <g transform="translate(1090 520)">
+    <rect x="-4.8" y="-42" width="9.6" height="42" fill="#6b5642"/>
+    <circle cx="0" cy="-62.4" r="36.8" fill="#6d9463"/>
+    <circle cx="-24" cy="-45.6" r="25.6" fill="#6d9463" opacity="0.9"/>
+    <circle cx="24" cy="-48" r="24" fill="#6d9463" opacity="0.85"/>
+  </g>
+  
+    
+    <polygon points="213,200 350,110 487,200" fill="#3f4a52"/>
+    <rect x="225" y="200" width="250" height="320" fill="#767865"/>
+    <g>
+    <rect x="260" y="250" width="80" height="75" fill="#8fb4c9"/>
+    <rect x="260" y="250" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="300" y1="250" x2="300" y2="325" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="365" y="250" width="80" height="75" fill="#8fb4c9"/>
+    <rect x="365" y="250" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="405" y1="250" x2="405" y2="325" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="260" y="365" width="80" height="75" fill="#8fb4c9"/>
+    <rect x="260" y="365" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="300" y1="365" x2="300" y2="440" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <rect x="365" y="405" width="75" height="115" fill="#3f4a52"/>
+    
+    <polygon points="463,200 600,110 737,200" fill="#3f4a52"/>
+    <rect x="475" y="200" width="250" height="320" fill="#767865"/>
+    <g>
+    <rect x="510" y="250" width="80" height="75" fill="#8fb4c9"/>
+    <rect x="510" y="250" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="550" y1="250" x2="550" y2="325" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="615" y="250" width="80" height="75" fill="#8fb4c9"/>
+    <rect x="615" y="250" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="655" y1="250" x2="655" y2="325" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="510" y="365" width="80" height="75" fill="#8fb4c9"/>
+    <rect x="510" y="365" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="550" y1="365" x2="550" y2="440" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <rect x="615" y="405" width="75" height="115" fill="#3f4a52"/>
+    <g>
+    <rect x="905" y="65" width="34" height="70" fill="#767865"/>
+    <rect x="899" y="55" width="46" height="12" fill="#3f4a52"/>
+  </g>
+    <polygon points="713,170 850,80 987,170" fill="#3f4a52"/>
+    <rect x="725" y="170" width="250" height="350" fill="#8d8f7c"/>
+    <g>
+    <rect x="760" y="220" width="80" height="75" fill="#f6dfa8"/>
+    <rect x="760" y="220" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="800" y1="220" x2="800" y2="295" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="865" y="220" width="80" height="75" fill="#8fb4c9"/>
+    <rect x="865" y="220" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="905" y1="220" x2="905" y2="295" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <g>
+    <rect x="760" y="335" width="80" height="75" fill="#f6dfa8"/>
+    <rect x="760" y="335" width="80" height="75" fill="none" stroke="#fbf8f2" stroke-width="7"/>
+    <line x1="800" y1="335" x2="800" y2="410" stroke="#fbf8f2" stroke-width="5"/>
+  </g>
+    <rect x="865" y="405" width="75" height="115" fill="#3f4a52"/>
+  <g transform="translate(280 520)">
+    <ellipse cx="0" cy="-14" rx="34" ry="22" fill="#6d9463"/>
+    <ellipse cx="-22" cy="-8" rx="22" ry="15" fill="#6d9463" opacity="0.85"/>
+    <ellipse cx="22" cy="-9" rx="20" ry="14" fill="#6d9463" opacity="0.9"/>
+  </g>
+  <g transform="translate(920 520)">
+    <ellipse cx="0" cy="-12.6" rx="30.6" ry="19.8" fill="#6d9463"/>
+    <ellipse cx="-19.8" cy="-7.2" rx="19.8" ry="13.5" fill="#6d9463" opacity="0.85"/>
+    <ellipse cx="19.8" cy="-8.1" rx="18" ry="12.6" fill="#6d9463" opacity="0.9"/>
+  </g>
+  <ellipse cx="600" cy="528" rx="420" ry="14" fill="#000000" opacity="0.07"/>
+</svg>
