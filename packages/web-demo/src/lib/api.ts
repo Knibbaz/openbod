@@ -166,7 +166,32 @@ export type DemoStatus =
   | { actief: false }
   | { actief: true; gestartOp: string; resetOp: string; cyclusMinuten: number };
 
+/** Adresopzoeking uit open bronnen (E1-S4). */
+export interface AdresSuggestie {
+  id: string;
+  weergavenaam: string;
+}
+
+export interface AdresKenmerken {
+  id: string;
+  adres: string;
+  straat: string;
+  huisnummer: string;
+  postcode?: string;
+  woonplaats: string;
+  woonoppervlak?: number;
+  bouwjaar?: number;
+  gebruiksdoel?: string;
+  bron: string;
+}
+
 export const coreApi = {
+  async zoekAdressen(q: string): Promise<AdresSuggestie[]> {
+    return json<AdresSuggestie[]>(await fetch(`${CORE_URL}/adressen?q=${encodeURIComponent(q)}`));
+  },
+  async getAdresKenmerken(adresId: string): Promise<AdresKenmerken> {
+    return json<AdresKenmerken>(await fetch(`${CORE_URL}/adressen/${encodeURIComponent(adresId)}`));
+  },
   async getDemoStatus(): Promise<DemoStatus> {
     try {
       return await json<DemoStatus>(await fetch(`${CORE_URL}/demo`));

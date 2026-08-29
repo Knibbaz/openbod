@@ -20,6 +20,7 @@ import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import KeyIcon from "@mui/icons-material/VpnKeyOutlined";
 import { coreApi, type Energielabel, type OvernameStatus } from "../lib/api";
 import { generateSellerKeypair, saveSellerKey } from "../lib/identity-envelope";
+import { Adreszoeker } from "../components/Adreszoeker";
 import { Fotogalerij } from "../components/Fotogalerij";
 import { STANDAARDZAKEN, alleStandaardzaken } from "../lib/standaardzaken";
 import { Sectie } from "../components/Sectie";
@@ -178,8 +179,18 @@ export function BeheerNieuw() {
         anders bewaard. Raak je hem kwijt, dan blijft de naam onleesbaar. Dat is geen gebrek maar de hele garantie.
       </Alert>
 
-      <Sectie titel="De woning">
+      <Sectie
+        titel="De woning"
+        toelichting="Zoek het adres op, dan staan het woonoppervlak en het bouwjaar er meteen bij uit de openbare registers. Je kunt alles aanpassen en ook alles zelf invullen."
+      >
         <Stack spacing={2}>
+          <Adreszoeker
+            onGevonden={(k) => {
+              setAddress(k.adres);
+              if (k.woonoppervlak !== undefined) setWoonoppervlak(String(k.woonoppervlak));
+              if (k.bouwjaar !== undefined) setBouwjaar(String(k.bouwjaar));
+            }}
+          />
           <TextField
             label="Adres"
             value={address}

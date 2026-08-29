@@ -52,7 +52,9 @@ Als makelaar wil ik een adres kunnen opzoeken en de kenmerken automatisch ingevu
 
 Bron is bewust niet Funda maar open overheidsdata: de PDOK-locatieserver voor adressen, de BAG van het Kadaster voor bouwjaar, oppervlakte en gebruiksdoel, en EP-Online bij de RVO voor het energielabel. Die gegevens zijn vrij te gebruiken en door iedereen na te trekken, wat precies past bij een systeem dat niet op vertrouwen leunt. Vraagprijs, foto's en omschrijving blijven handwerk van de makelaar, want die zijn van hem.
 
-Uit te zoeken voordat dit gebouwd wordt: welke van deze bronnen zonder aangevraagde sleutel te gebruiken zijn. PDOK is vrij; over de BAG-bevraging en EP-Online moet dat nagekeken worden, en een sleutel hoort dan in de core te staan en niet in de browser.
+**Status: gebouwd voor adres, woonoppervlak en bouwjaar.** Beide bronnen bleken zonder sleutel of registratie te werken: de locatieserver (`api.pdok.nl/bzk/locatieserver/search/v3_1`) voor het zoeken, en de BAG OGC API v2 (`api.pdok.nl/kadaster/bag/ogc/v2`) voor de gebruiksoppervlakte van het verblijfsobject en het bouwjaar van het pand. De opzoeking draait in de core (`packages/core/src/adres/pdok.ts`), niet in de browser: PDOK ziet dan de instantie in plaats van elke makelaar, de drie verzoeken die één opzoeking kost worden tot één antwoord samengevoegd, en de instantie kan begrenzen hoeveel verkeer zij naar een gratis publieke voorziening stuurt.
+
+Nog open: het energielabel uit EP-Online (RVO), waarvoor wél een sleutel nodig is, en het perceeloppervlak, dat niet in de BAG zit maar in de kadastrale registratie en niet vrij beschikbaar is. Beide velden vult de makelaar voorlopig zelf.
 
 Acceptatiecriteria:
 - Een adres zoeken vult adres en kenmerken in het formulier, zonder ze vast te zetten: de makelaar kan alles corrigeren.
@@ -378,7 +380,7 @@ Testcases:
 
 Minimale set om het verhaal te tonen en een subsidieaanvraag te onderbouwen: E1-S1, E1-S2, E2-S1, E2-S2, E3-S1, E3-S2, E4-S1, E4-S3, E5-S1, E6-S2, E7-S1, E7-S2, E8-S1.
 
-Later: E1-S3, E1-S4, E1-S5, E4-S2, E5-S2, E6-S1, E6-S3, E8-S2, E9, E10, E11.
+Later: E1-S3, E1-S5, E4-S2, E5-S2, E6-S1, E6-S3, E8-S2, E9, E10, E11.
 
 ## Testsoorten
 

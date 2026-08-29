@@ -259,3 +259,30 @@ export const deliveryResponse = z.object({
   deliveredAt: z.string(),
   logIndex: z.number().int().nonnegative(),
 });
+
+/**
+ * Adresopzoeking uit open bronnen (E1-S4). Alles optioneel wat de BAG niet
+ * altijd heeft: een adres zonder oppervlakte is nog steeds bruikbaar.
+ */
+/** Vrije tekst van de gebruiker: begrensd, want dit gaat door naar een externe bron. */
+export const adresZoekQuery = z.object({ q: z.string().trim().min(3).max(120) });
+
+/** De locatieserver geeft id's als `adr-<hex>`; alleen die vorm gaat door. */
+export const adresIdParams = z.object({ adresId: z.string().regex(/^[a-z]{3}-[0-9a-f]{6,64}$/) });
+
+export const adresSuggestieResponse = z.array(
+  z.object({ id: z.string(), weergavenaam: z.string() }),
+);
+
+export const adresKenmerkenResponse = z.object({
+  id: z.string(),
+  adres: z.string(),
+  straat: z.string(),
+  huisnummer: z.string(),
+  postcode: z.string().optional(),
+  woonplaats: z.string(),
+  woonoppervlak: z.number().optional(),
+  bouwjaar: z.number().optional(),
+  gebruiksdoel: z.string().optional(),
+  bron: z.string(),
+});

@@ -12,6 +12,7 @@ import {
 import { ConsoleLogbookDelivery, HttpLogbookDelivery, type LogbookDelivery } from "../logbook/delivery.js";
 import { verifyIdentityToken } from "./identity.js";
 import { demoStatus, startDemo } from "../demo/scenario.js";
+import { AdresBronError, haalAdresKenmerken, zoekAdressen } from "../adres/pdok.js";
 import {
   abortBody,
   awardBody,
@@ -28,6 +29,10 @@ import {
   proofResponse,
   receiptResponse,
   sealedBidBody,
+  adresKenmerkenResponse,
+  adresIdParams,
+  adresSuggestieResponse,
+  adresZoekQuery,
 } from "./schemas.js";
 
 const PORT = Number(process.env.CORE_PORT ?? 4000);
@@ -153,6 +158,52 @@ app.get("/listings", async (_req, reply) => {
  * antwoordt hier `actief: false`, en dan verdwijnt die hele mededeling.
  */
 app.get("/demo", async () => (DEMO_MODE ? demoStatus() : { actief: false }));
+
+/**
+ * Adressen zoeken in open overheidsbronnen (E1-S4), zodat een makelaar de
+ * kenmerken niet overtypt uit de brochure van een ander. Strenger begrensd dan
+ * de rest: hierachter zit een gratis publieke voorziening van PDOK, en die
+ * hoort niet leeg te lopen door één instantie.
+ */
+app.get(
+  "/adressen",
+  { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const parsed = adresZoekQuery.safeParse(req.query);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      return sendValidated(reply, adresSuggestieResponse, await zoekAdressen(parsed.data.q));
+    } catch (err) {
+      return handleAdresError(err, reply);
+    }
+  },
+);
+
+app.get(
+  "/adressen/:adresId",
+  { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const parsed = adresIdParams.safeParse(req.params);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      return sendValidated(reply, adresKenmerkenResponse, await haalAdresKenmerken(parsed.data.adresId));
+    } catch (err) {
+      return handleAdresError(err, reply);
+    }
+  },
+);
+
+/**
+ * Een bron die hapert mag het aanmaken van een woning niet blokkeren: de
+ * frontend valt terug op handmatig invullen. Daarom 502 en geen 500, met een
+ * boodschap die zegt wie er niet antwoordde.
+ */
+function handleAdresError(err: unknown, reply: FastifyReply) {
+  if (err instanceof AdresBronError || (err instanceof Error && err.name === "TimeoutError")) {
+    return reply.status(502).send({ error: "de adresbron is nu niet bereikbaar; vul de gegevens zelf in" });
+  }
+  return handleDomainError(err, reply);
+}
 
 app.get("/listings/:id", async (req, reply) => {
   const params = parseParamsOr400(listingIdParams, req.params, reply);

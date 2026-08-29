@@ -189,6 +189,15 @@ cryptografisch niets aan toe, terwijl het wel het aantal biedingen en de biedtij
 vóór de sluitingstijd zou lekken, ook bij woningen waar de verkoper de aantal-zichtbaar-
 regel juist uit heeft gezet. Vandaar het ontvangstbewijs wel, de logboekkopie niet.
 
+Bij het klaarzetten van een woning zoekt de makelaar het adres op, en dan komen het
+woonoppervlak en het bouwjaar uit de BAG van het Kadaster (via PDOK, zonder sleutel of
+registratie). Die opzoeking loopt via de core en niet via de browser, zodat PDOK de
+instantie ziet in plaats van elke makelaar afzonderlijk. De waarden vullen het formulier
+en zetten niets vast: de BAG heeft het over oppervlaktes en bouwjaren geregeld anders dan
+de werkelijkheid, en wat de makelaar neerzet gaat het dossier in, niet wat de BAG zegt.
+De herkomst blijft in beeld, zodat een bieder kan nakijken waar een getal vandaan komt.
+Hapert de bron, dan meldt de core dat met een 502 en vult de makelaar de gegevens zelf in.
+
 Bewerkingsgeschiedenis en de tijd die iemand over het invullen deed, worden niet
 vastgelegd. Dat is gedragsobservatie van een consument die geen keus heeft of hij meedoet,
 het dient geen doel in deze procedure, en het zou dezelfde informatievoorsprong opleveren
