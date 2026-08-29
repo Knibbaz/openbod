@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "Open, verifieerbare referentie-implementatie voor verzegeld bieden op de woningmarkt",
+  "license": "EUPL-1.2",
   "workspaces": [
     "packages/*"
   ],

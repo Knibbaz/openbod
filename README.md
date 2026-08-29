@@ -222,9 +222,25 @@ Klein en echt, geen maquette:
 ## 12. Governance, licentie en financiering
 
 - **Governance.** Zodra meerdere partijen het draaien, is iets lichts nodig om het neutraal te houden en versplintering te voorkomen. Minimum: een heldere spec plus conformiteitstests. Maximum: een kleine stichting die de standaard beheert.
-- **Licentie.** Overweeg een copyleft-licentie (AGPL of de EUPL, die goed past bij de overheids- en EU-context) zodat verbeteringen open blijven. Een permissieve licentie (Apache 2.0) vergroot juist de adoptie. Dit is een bewuste keuze met gevolgen.
+- **Licentie: EUPL 1.2** (zie `LICENSE`). Dit is een copyleft-licentie: wie de code aanpast en het resultaat verspreidt óf als dienst aanbiedt, moet die wijzigingen onder dezelfde licentie beschikbaar stellen.
+
+  Waarom copyleft en niet iets permissiefs als Apache 2.0: de belofte van dit project is dat vertrouwen niet uit een toezegging komt maar uit code die iedereen kan controleren. Een gesloten afgeleide die zich op dit werk beroept maar waarvan niemand de biedlogica kan inzien, haalt die belofte onderuit. In deze markt draait bovendien alles als gehoste dienst, niet als gedistribueerde software — daarom is de dienstverlening-trigger van de EUPL essentieel, waar een gewone GPL hier niets zou doen. Het commons-model hierboven werkt alleen als niemand er stilletjes mee weg kan lopen.
+
+  Waarom de EUPL en niet de AGPL: de EUPL is geschreven door de Europese Commissie, wordt aanbevolen voor overheidssoftware, en heeft een officiële Nederlandse tekst die juridisch even geldig is als de Engelse. Dat past bij de context waarin dit project zich beweegt. Via de compatibiliteitslijst in de appendix mogen afgeleide werken bovendien onder onder meer GPL, AGPL, MPL 2.0 of LGPL worden uitgebracht, dus de keuze sluit samenwerking met die ecosystemen niet af.
+
+  Wat de EUPL minder scherp regelt dan Apache 2.0 is de patentclausule; die is er wel, maar minder uitgewerkt en zonder retaliatiebepaling. Voor een project van deze omvang weegt dat niet op tegen het bovenstaande.
+
+  De keuze is bewust, maar blijft een juridische keuze: laat haar bevestigen door iemand die dit vaker doet voordat je er derden aan bindt.
 - **Financiering.** Het onderhouden van open commons-infrastructuur is precies wat een fonds als NLnet (via het EU-programma Next Generation Internet) financiert. De reguliere open call heropent naar verwachting na de zomer van 2026. Kijk daarnaast naar SIDN Fonds. Zo kun je klein blijven en toch betaald krijgen voor het open deel, zonder het SaaS-pad op te moeten.
 
 ## Bronnen en context
 
 De feitelijke context is gebaseerd op openbare bronnen, waaronder Rijksoverheid, NVM, Vastgoed Nederland, Vereniging Eigen Huis, Logius en CBS. Cijfers en data (zoals de invoerdatum van het NVM-protocol en de gemiddelde transactieprijs) veranderen, controleer ze bij gebruik richting derden.
+
+## Licentie
+
+Copyright © 2026 de auteurs van OpenBod
+
+Licensed under the EUPL
+
+Dit werk staat onder de European Union Public Licence v. 1.2. De volledige tekst staat in `LICENSE`. Er zijn officiële vertalingen in alle EU-talen, waaronder het Nederlands, die juridisch gelijkwaardig zijn; zie de EUPL zelf voor de vindplaats.
