@@ -1,84 +1,12 @@
-:root {
-  color-scheme: light dark;
-  font: 16px/1.5 system-ui, sans-serif;
-}
+/*
+ * Vrijwel alles staat in het MUI-thema (src/theme.ts). Wat hier overblijft, is
+ * wat een thema niet regelt: de documentbasis en de weergave van hashes.
+ */
 
-body {
-  margin: 0;
-}
-
-.app {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 0 16px 64px;
-}
-
-nav {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  padding: 16px 0;
-  border-bottom: 1px solid #8884;
-  margin-bottom: 24px;
-}
-
-nav a:first-child {
-  font-weight: 700;
-  margin-right: auto;
-}
-
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 420px;
-}
-
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.9em;
-}
-
-input,
-textarea,
-button {
-  font: inherit;
-  padding: 8px;
-}
-
-button {
-  cursor: pointer;
-  width: fit-content;
-}
-
+/* Hashes en sleutels zijn lange, betekenisloze reeksen. Ze moeten kunnen
+   afbreken, anders duwen ze op een telefoon de hele pagina opzij. */
 code {
-  background: #8882;
-  padding: 2px 5px;
-  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
   word-break: break-all;
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 12px 0;
-}
-
-th,
-td {
-  border: 1px solid #8884;
-  padding: 6px 10px;
-  text-align: left;
-}
-
-ul {
-  padding-left: 20px;
-}
-
-section {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #8884;
 }

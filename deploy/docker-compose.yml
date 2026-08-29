@@ -27,6 +27,9 @@ services:
       # Gedeeld geheim voor de bezorgopdrachten die de core naar
       # /notify/logbook stuurt (E4-S3). Moet gelijk zijn aan dat van de core.
       DELIVERY_SHARED_SECRET: ${DELIVERY_SHARED_SECRET}
+      # Zonder pepper is een pseudonieme sub terug te rekenen uit een adres.
+      # De backend weigert in productie te starten als deze ontbreekt.
+      IDENTITY_SUBJECT_PEPPER: ${IDENTITY_SUBJECT_PEPPER}
       TRUST_PROXY: "true"
     restart: unless-stopped
     expose:

@@ -74,6 +74,8 @@ Zo'n verkoop kan geen enkel systeem verhinderen: hij gebeurt per definitie buite
 
 Login is een aparte backend die de biedlogica niet raakt. Die backend authenticeert de gebruiker en geeft een ondertekend token af (OIDC-stijl) met een subject-claim, dat de bied-core verifieert. In de demo is de loginmethode een magic link (verificatie van een e-mailadres, genoeg om het protocol te tonen). Later federeert hier een zwaarder middel in.
 
+De koppeling tussen persoon en systeem is een pseudoniem, en dat pseudoniem moet ook echt een pseudoniem zijn. Een kale `sha256(e-mailadres)` is dat niet: een adres heeft daarvoor te weinig entropie, dus met een ledenlijst of gewoon de gebruikelijke voornaam.achternaam-varianten reken je zo'n hash terug. Daarom is het `HMAC-SHA256(pepper, adres)`, met een pepper die de identiteitslaag nooit verlaat. Dat is het verschil tussen "wij slaan geen adressen op" en "wij kunnen niet achterhalen wie dit is", en alleen het tweede is een garantie.
+
 Belangrijk: DigiD is hier niet zomaar bruikbaar. Aansluiten op DigiD mag alleen als je een bij wet vastgestelde publieke taak uitvoert en BSN-gerechtigd bent, plus een jaarlijkse ICT-beveiligingsassessment doet. Een privaat biedplatform voldoet daar niet aan. Het private equivalent is iDIN (via de banken). Daarom blijft identiteit een naad: de demo toont waar een iDIN- of DigiD-waardig middel inschuift, zonder die kant nu te bouwen.
 
 ## 5. Architectuur op hoofdlijnen

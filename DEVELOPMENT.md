@@ -29,12 +29,15 @@ Wil je de automatische verstrekking van het biedlogboek lokaal echt zien lopen, 
 in beide backends hetzelfde geheim:
 
 ```
-DELIVERY_SHARED_SECRET=lokaal-geheim npm run dev --workspace packages/identity
+IDENTITY_SUBJECT_PEPPER=$(openssl rand -hex 32) \\
+  DELIVERY_SHARED_SECRET=lokaal-geheim npm run dev --workspace packages/identity
 CORE_DELIVERY_ENDPOINT=http://localhost:4001/notify/logbook \
   DELIVERY_SHARED_SECRET=lokaal-geheim npm run dev --workspace packages/core
 ```
 
-Zonder die variabelen waarschuwt de core alleen dat er niets verstuurd wordt.
+Zonder die variabelen waarschuwt de core alleen dat er niets verstuurd wordt. `IDENTITY_SUBJECT_PEPPER`
+mag lokaal weg: dan maakt identity er zelf een aan, met een waarschuwing dat subjects bij elke herstart
+veranderen. In productie start identity zonder pepper bewust niet op.
 
 Open `http://localhost:5173`. Er is geen mailserver aangesloten: een "magic link"
 wordt getoond in de UI en gelogd door `identity`, in plaats van gemaild.
@@ -43,12 +46,44 @@ wordt getoond in de UI en gelogd door `identity`, in plaats van gemaild.
 
 ```
 npm run test --workspace packages/core       # property- en integratietests, echte drand-calls
+npm run test --workspace packages/identity   # pseudonieme subjects, snel
 npm run test --workspace packages/verifier
 ```
 
 De timelock-tests praten met het echte publieke netwerk en duren daardoor
 enkele seconden per test (periode 3s). Er is bewust geen gemockte timelock:
 het bewijs dat "de operator niet kan gluren" moet tegen het echte netwerk gelden.
+
+## Wat de instantie werkelijk in handen heeft
+
+`packages/core/test/invariants/geen-lek.test.ts` is de test die de kernclaim draagt. Hij
+dumpt de complete objectgraaf van de store, inclusief Maps en interne velden, en zoekt
+daarin naar de echte waarden: bedrag, motivatie, naam, contactgegeven. Vóór de deadline
+komt geen ervan voor. Na de onthulling hoort het bedrag er wél te staan, naam en contact
+nog steeds niet, ook niet na gunning.
+
+De aanpak is expres bot. Een test die controleert of de bekende velden netjes versleuteld
+zijn, bewijst alleen iets over de velden die je bedacht had. Deze bewijst dat de waarde
+nergens staat, ook niet in een cache of in een veld dat later wordt toegevoegd. Dat de
+test zelf werkt, blijkt uit de assertie dat de commitment wél in de dump te vinden is:
+afwezigheid is dus echt afwezigheid, geen onbereikbaarheid.
+
+`packages/identity/test/subject.test.ts` doet hetzelfde voor de andere helft van de claim:
+een `sub` is niet uit een adres te raden zonder de pepper, ook niet met een woordenlijst.
+
+## Frontend
+
+De demo-frontend gebruikt MUI (Material UI). Het thema staat in `packages/web-demo/src/theme.ts`: een
+diepe, rustige blauwtint, en kleur die betekenis draagt in plaats van decoratie. Rood is voor fouten,
+groen uitsluitend voor een geslaagde verificatie, oranje voor de fase waarin iets verzegeld en dus nog
+niet leesbaar is. Nergens maakt kleur het ene bod aantrekkelijker dan het andere: de verkoper weegt zelf
+zekerheid tegen hoogte, en de interface hoort daar geen duim op te leggen.
+
+Licht en donker volgen het systeemthema van de bezoeker; er is bewust geen eigen schakelaar.
+
+Let op bij MUI 9: `Stack` accepteert geen losse system props meer (`alignItems`, `flexWrap`,
+`justifyContent`). Die horen in `sx`. Alleen `direction`, `spacing`, `divider` en `useFlexGap` staan nog
+als eigen prop op het component.
 
 ## Zelf verifiëren
 
@@ -81,8 +116,11 @@ informatievoorsprong die dit project wil afschaffen. Een concept hoort dus in de
 van de bieder te blijven en komt daarom niet in het logboek.
 
 Nog niet gebouwd (zie backlog, "Later"): white-label opmaak, publieke transparency-log
-(anchoring), pluggable iDIN-identiteit, certificering/trust-list, en een tweede reskinbare
-frontend. De architectuur is er wel op ingericht (aparte `identity`-service, `anchor/`-module
+(anchoring), pluggable iDIN-identiteit, certificering/trust-list, een tweede reskinbare
+frontend, en het demoscenario (E8-S2) dat de garanties aan een bezoeker laat zien. Dat
+laatste heeft nog echt werk nodig: de bewijzen bestaan als tests, maar de vorm waarin je
+ze aan een bezoeker toont zonder dat de uitleg los kan lopen van de werkelijke uitvoer is
+nog een open ontwerpvraag. Zie E8-S2 in de backlog voor de openstaande punten. De architectuur is er wel op ingericht (aparte `identity`-service, `anchor/`-module
 als plek gereserveerd in `packages/core/src`).
 
 Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
@@ -102,6 +140,9 @@ Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
   serverlog, want er is geen mailserver aangesloten (`sendLogbookMail` in
   `packages/identity/src/server.ts`). Zonder `CORE_DELIVERY_ENDPOINT` en
   `DELIVERY_SHARED_SECRET` verstuurt de core helemaal niets en zegt dat ook bij het starten.
+- **Vluchtige subject-pepper.** Zonder `IDENTITY_SUBJECT_PEPPER` genereert identity er lokaal zelf een.
+  Handig om te draaien, maar subjects veranderen dan bij elke herstart. In productie weigert de backend
+  te starten zonder, want een zwakker pseudoniem stilletjes uitdelen ondermijnt de claim eronder.
 - **Sub naar e-mail in het geheugen.** De identity-backend onthoudt die koppeling alleen
   voor wie tijdens deze processtart inlogde. Na een herstart is bezorging aan eerdere
   deelnemers onmogelijk tot zij opnieuw inloggen.

@@ -1,5 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
+import Divider from "@mui/material/Divider";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import InputAdornment from "@mui/material/InputAdornment";
+import LinearProgress from "@mui/material/LinearProgress";
+import MenuItem from "@mui/material/MenuItem";
+import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import DownloadIcon from "@mui/icons-material/FileDownloadOutlined";
+import LockIcon from "@mui/icons-material/LockOutlined";
+import VerifiedIcon from "@mui/icons-material/VerifiedOutlined";
 import {
   coreApi,
   getToken,
@@ -13,6 +37,8 @@ import {
 import { sealBid, type OvernameChoice, type Voorbehoud } from "../lib/seal";
 import { loadSellerKey, openIdentity, sealIdentity, type BidderIdentity } from "../lib/identity-envelope";
 import { verifyHashChainInBrowser } from "../lib/verify";
+import { Sectie } from "../components/Sectie";
+import { StatusChip } from "../components/StatusChip";
 
 const VOORBEHOUD_LABELS: { type: Voorbehoud["type"]; label: string }[] = [
   { type: "financieel", label: "Financieel voorbehoud" },
@@ -53,6 +79,10 @@ function isoToDate(value?: string): string {
   return value ? value.slice(0, 10) : "-";
 }
 
+function euro(bedrag: number): string {
+  return `€ ${bedrag.toLocaleString("nl-NL")}`;
+}
+
 interface VoorbehoudState {
   selected: boolean;
   deadline: string;
@@ -62,6 +92,18 @@ interface VoorbehoudState {
 interface TakeoverState {
   choice: OvernameChoice["choice"];
   amount: string;
+}
+
+/** Een regel in een sleutel-waardetabel, zoals het ontvangstbewijs. */
+function Rij({ kop, children }: { kop: string; children: ReactNode }) {
+  return (
+    <TableRow>
+      <TableCell component="th" scope="row" sx={{ width: "35%", verticalAlign: "top" }}>
+        {kop}
+      </TableCell>
+      <TableCell>{children}</TableCell>
+    </TableRow>
+  );
 }
 
 export function ListingDetail() {
@@ -230,7 +272,12 @@ export function ListingDetail() {
       const res = myBid
         ? await coreApi.adjustBid(id, myBid.bidId, commitment, ciphertext, identityEnvelope)
         : await coreApi.placeBid(id, commitment, ciphertext, identityEnvelope);
-      setMyBid({ ...res, version: (myBid?.version ?? 0) + 1, createdAt: myBid?.createdAt ?? res.timestamp, updatedAt: res.timestamp });
+      setMyBid({
+        ...res,
+        version: (myBid?.version ?? 0) + 1,
+        createdAt: myBid?.createdAt ?? res.timestamp,
+        updatedAt: res.timestamp,
+      });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -278,401 +325,478 @@ export function ListingDetail() {
     return listing?.takeoverItems.find((i) => i.itemId === itemId)?.label ?? itemId;
   }
 
-  if (error) return <p style={{ color: "crimson" }}>{error}</p>;
-  if (!listing) return <p>Laden…</p>;
+  function downloadLogbook() {
+    if (!logbook || !listing) return;
+    const blob = new Blob([JSON.stringify(logbook, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `logboek-${listing.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (error && !listing) return <Alert severity="error">{error}</Alert>;
+  if (!listing) {
+    return (
+      <Stack spacing={2} sx={{ alignItems: "center", py: 6 }}>
+        <CircularProgress />
+        <Typography color="text.secondary">Laden…</Typography>
+      </Stack>
+    );
+  }
 
   const biedbareItems = listing.takeoverItems.filter((item) => choicesFor(item.status).length > 0);
   // Je bent hier de verkoper als je de private sleutel van deze woning hebt.
   const isSeller = loadSellerKey(listing.id) !== null;
+  const afgerond = listing.status === "onherroepelijk" || listing.status === "buiten_procedure";
 
   return (
-    <div>
-      <h1>{listing.address}</h1>
-      <p>
-        Status: <strong>{listing.status}</strong>, deadline {new Date(listing.deadline).toLocaleString("nl-NL")}
-      </p>
-      {listing.bidCount !== undefined && <p>Aantal biedingen: {listing.bidCount} (bedragen pas na onthulling)</p>}
+    <Stack spacing={3}>
+      <Stack spacing={1.5}>
+        <Typography variant="h1">{listing.address}</Typography>
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
+          <StatusChip status={listing.status} />
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`Deadline ${new Date(listing.deadline).toLocaleString("nl-NL")}`}
+          />
+          {listing.bidCount !== undefined && (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`${listing.bidCount} bieding${listing.bidCount === 1 ? "" : "en"}, bedragen pas na onthulling`}
+            />
+          )}
+        </Stack>
+      </Stack>
+
+      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+
+      {listing.status === "buiten_procedure" && (
+        <Alert severity="warning">
+          <AlertTitle>Buiten deze procedure afgehandeld</AlertTitle>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Deze verkoop is niet via de deadline en de gunning afgerond. Opgegeven reden:{" "}
+            <strong>{listing.buitenProcedureReden}</strong>
+            {listing.buitenProcedureAt && ` (${new Date(listing.buitenProcedureAt).toLocaleString("nl-NL")})`}
+          </Typography>
+          <Typography variant="body2">
+            Verzegelde biedingen die op dat moment nog niet geopend waren, blijven verzegeld: ze worden niet alsnog
+            opengemaakt voor een procedure die niet doorgaat. Wat je wél houdt, is het bewijs dát je bod er stond en
+            dat het nooit geopend is, zichtbaar in de keten hieronder.
+          </Typography>
+        </Alert>
+      )}
 
       {listing.takeoverItems.length > 0 && (
-        <section>
-          <h2>Roerende zaken</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th>Status volgens verkoper</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listing.takeoverItems.map((item) => (
-                <tr key={item.itemId}>
-                  <td>{item.label}</td>
-                  <td>
-                    {STATUS_LABELS[item.status]}
-                    {item.amount !== undefined && ` (€ ${item.amount.toLocaleString("nl-NL")})`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        <Sectie titel="Roerende zaken">
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Item</TableCell>
+                  <TableCell>Status volgens verkoper</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {listing.takeoverItems.map((item) => (
+                  <TableRow key={item.itemId}>
+                    <TableCell>{item.label}</TableCell>
+                    <TableCell>
+                      {STATUS_LABELS[item.status]}
+                      {item.amount !== undefined && ` (${euro(item.amount)})`}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Sectie>
       )}
 
       {listing.status === "biedfase" && myBid && (
-        <section>
-          <h2>Jouw lopende bod</h2>
-          <p>
-            Dit is je bewijs dat je bod in het logboek staat. Bewaar het: na de onthulling kun je hiermee narekenen dat
-            precies dit bod is meegeteld. Het bedrag staat er bewust niet bij, want de server kan dat zelf nog niet lezen.
-          </p>
-          <table>
-            <tbody>
-              <tr>
-                <th>Ingediend op</th>
-                <td>{new Date(myBid.createdAt).toLocaleString("nl-NL")}</td>
-              </tr>
-              <tr>
-                <th>Laatst gewijzigd</th>
-                <td>
+        <Sectie
+          titel="Jouw lopende bod"
+          toelichting="Dit is je bewijs dat je bod in het logboek staat. Bewaar het: na de onthulling kun je hiermee narekenen dat precies dit bod is meegeteld. Het bedrag staat er bewust niet bij, want de server kan dat zelf nog niet lezen."
+        >
+          <TableContainer>
+            <Table size="small">
+              <TableBody>
+                <Rij kop="Ingediend op">{new Date(myBid.createdAt).toLocaleString("nl-NL")}</Rij>
+                <Rij kop="Laatst gewijzigd">
                   {new Date(myBid.updatedAt).toLocaleString("nl-NL")} (versie {myBid.version})
-                </td>
-              </tr>
-              <tr>
-                <th>bidId</th>
-                <td>
+                </Rij>
+                <Rij kop="bidId">
                   <code>{myBid.bidId}</code>
-                </td>
-              </tr>
-              <tr>
-                <th>Logregel</th>
-                <td>#{myBid.logIndex}</td>
-              </tr>
-              <tr>
-                <th>entryHash</th>
-                <td>
+                </Rij>
+                <Rij kop="Logregel">#{myBid.logIndex}</Rij>
+                <Rij kop="entryHash">
                   <code>{myBid.entryHash}</code>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </Rij>
+              </TableBody>
+            </Table>
+          </TableContainer>
           {listing.rules.intrekkenToegestaan ? (
-            <button onClick={onWithdraw}>Bod intrekken</button>
+            <Button color="error" variant="outlined" onClick={onWithdraw} sx={{ alignSelf: "flex-start" }}>
+              Bod intrekken
+            </Button>
           ) : (
-            <p>Intrekken is voor deze woning niet toegestaan. Dat stond vooraf vast, voor iedereen gelijk.</p>
+            <Alert severity="info">
+              Intrekken is voor deze woning niet toegestaan. Dat stond vooraf vast, voor iedereen gelijk.
+            </Alert>
           )}
-        </section>
+        </Sectie>
       )}
 
       {listing.status === "biedfase" && (
-        <section>
-          <h2>{myBid ? "Je bod aanpassen" : "Verzegeld bod plaatsen"}</h2>
+        <Sectie
+          titel={myBid ? "Je bod aanpassen" : "Verzegeld bod plaatsen"}
+          toelichting="Je hele bod (bedrag, datums, voorbehouden, overname en motivatie) wordt in deze browser versleuteld naar de deadline. Deze server kan het pas erna lezen."
+        >
           {myBid && !listing.rules.aanpassenToegestaan && (
-            <p>Aanpassen is voor deze woning niet toegestaan. Dat stond vooraf vast, voor iedereen gelijk.</p>
+            <Alert severity="info">
+              Aanpassen is voor deze woning niet toegestaan. Dat stond vooraf vast, voor iedereen gelijk.
+            </Alert>
           )}
           {myBid && listing.rules.aanpassenToegestaan && (
-            <p>
+            <Alert severity="info">
               Je vervangt hiermee je hele bod door een nieuwe verzegeling. Dat je hebt aangepast blijft in het logboek
               staan, wat je aanpaste niet. Dat is tot de deadline voor niemand leesbaar.
-            </p>
+            </Alert>
           )}
-          <p>
-            Je hele bod (bedrag, datums, voorbehouden, overname en motivatie) wordt in deze browser versleuteld naar
-            de deadline. Deze server kan het pas erna lezen.
-          </p>
+
           {listing.sellerPublicKey && (
             <>
-              <h3>Wie je bent</h3>
-              <p>
+              <Divider textAlign="left">
+                <Typography variant="overline">Wie je bent</Typography>
+              </Divider>
+              <Typography variant="body2" color="text.secondary">
                 Je naam wordt apart versleuteld naar de verkoper. Deze server kan hem niet lezen, de makelaar ook niet,
                 en de verkoper pas op het moment dat hij aan jou gunt. In het openbare logboek verschijnt hij nooit.
-              </p>
-              <label>
-                Naam
-                <input value={bidderName} onChange={(e) => setBidderName(e.target.value)} />
-              </label>
-              <label>
-                Contact (optioneel, bijvoorbeeld e-mail of telefoon)
-                <input value={bidderContact} onChange={(e) => setBidderContact(e.target.value)} />
-              </label>
+              </Typography>
+              <Stack spacing={2}>
+                <TextField label="Naam" value={bidderName} onChange={(e) => setBidderName(e.target.value)} />
+                <TextField
+                  label="Contact (optioneel)"
+                  placeholder="e-mail of telefoon"
+                  value={bidderContact}
+                  onChange={(e) => setBidderContact(e.target.value)}
+                />
+              </Stack>
             </>
           )}
-          <h3>Je bod</h3>
-          <label>
-            Bedrag (EUR)
-            <input type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
-          </label>
-          <label>
-            Gewenste opleverdatum (optioneel)
-            <input type="date" value={handoverDate} onChange={(e) => setHandoverDate(e.target.value)} />
-          </label>
-          <label>
-            Bod geldig tot (optioneel)
-            <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
-          </label>
 
-          <h3>Voorbehouden</h3>
-          <p>Dat je een voorbehoud maakt is straks zichtbaar zonder waardeoordeel. De verkoper weegt zelf.</p>
-          {VOORBEHOUD_LABELS.map((v) => {
-            const state = conditionState(v.type);
-            return (
-              <div key={v.type}>
-                <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={state.selected}
-                    onChange={(e) => setCondition(v.type, { selected: e.target.checked })}
+          <Divider textAlign="left">
+            <Typography variant="overline">Je bod</Typography>
+          </Divider>
+          <Stack spacing={2}>
+            <TextField
+              label="Bedrag"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              slotProps={{ input: { startAdornment: <InputAdornment position="start">€</InputAdornment> } }}
+            />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                label="Gewenste opleverdatum"
+                type="date"
+                value={handoverDate}
+                onChange={(e) => setHandoverDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                label="Bod geldig tot"
+                type="date"
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Stack>
+            <TextField
+              label="Motivatie (optioneel)"
+              multiline
+              minRows={2}
+              value={motivation}
+              onChange={(e) => setMotivation(e.target.value)}
+              helperText="Gaat alleen naar de verkoper, niet naar de andere bieders, en komt niet in het openbare logboek."
+            />
+          </Stack>
+
+          <Divider textAlign="left">
+            <Typography variant="overline">Voorbehouden</Typography>
+          </Divider>
+          <Typography variant="body2" color="text.secondary">
+            Dat je een voorbehoud maakt is straks zichtbaar zonder waardeoordeel. De verkoper weegt zelf zekerheid
+            tegen hoogte.
+          </Typography>
+          <Stack spacing={1}>
+            {VOORBEHOUD_LABELS.map((v) => {
+              const state = conditionState(v.type);
+              return (
+                <Box key={v.type}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={state.selected}
+                        onChange={(e) => setCondition(v.type, { selected: e.target.checked })}
+                      />
+                    }
+                    label={v.label}
                   />
-                  {v.label}
-                </label>
-                {state.selected && (
-                  <>
-                    <label>
-                      Geregeld vóór (optioneel)
-                      <input
+                  {state.selected && (
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ pl: 4, pb: 1 }}>
+                      <TextField
+                        label="Geregeld vóór"
                         type="date"
                         value={state.deadline}
                         onChange={(e) => setCondition(v.type, { deadline: e.target.value })}
+                        slotProps={{ inputLabel: { shrink: true } }}
                       />
-                    </label>
-                    <label>
-                      Toelichting (optioneel)
-                      <input
-                        type="text"
-                        maxLength={500}
+                      <TextField
+                        label="Toelichting"
                         value={state.note}
                         onChange={(e) => setCondition(v.type, { note: e.target.value })}
+                        slotProps={{ htmlInput: { maxLength: 500 } }}
                       />
-                    </label>
-                  </>
-                )}
-              </div>
-            );
-          })}
+                    </Stack>
+                  )}
+                </Box>
+              );
+            })}
+          </Stack>
 
           {biedbareItems.length > 0 && (
             <>
-              <h3>Roerende zaken ter overname</h3>
-              {biedbareItems.map((item) => {
-                const state = takeoverState(item);
-                return (
-                  <div key={item.itemId}>
-                    <label>
-                      {item.label}
-                      {item.amount !== undefined && ` (gevraagd € ${item.amount.toLocaleString("nl-NL")})`}
-                      <select
+              <Divider textAlign="left">
+                <Typography variant="overline">Roerende zaken ter overname</Typography>
+              </Divider>
+              <Stack spacing={2}>
+                {biedbareItems.map((item) => {
+                  const state = takeoverState(item);
+                  return (
+                    <Stack key={item.itemId} direction={{ xs: "column", sm: "row" }} spacing={2}>
+                      <TextField
+                        select
+                        label={
+                          item.amount !== undefined
+                            ? `${item.label} (gevraagd ${euro(item.amount)})`
+                            : item.label
+                        }
                         value={state.choice}
                         onChange={(e) =>
                           setTakeoverChoice(item.itemId, { choice: e.target.value as OvernameChoice["choice"] })
                         }
                       >
                         {choicesFor(item.status).map((c) => (
-                          <option key={c} value={c}>
+                          <MenuItem key={c} value={c}>
                             {CHOICE_LABELS[c]}
-                          </option>
+                          </MenuItem>
                         ))}
-                      </select>
-                    </label>
-                    {state.choice === "eigen_bod" && (
-                      <label>
-                        Jouw bod voor dit item (EUR)
-                        <input
+                      </TextField>
+                      {state.choice === "eigen_bod" && (
+                        <TextField
+                          label="Jouw bedrag"
                           type="number"
-                          min={0}
                           value={state.amount}
                           onChange={(e) => setTakeoverChoice(item.itemId, { amount: e.target.value })}
+                          slotProps={{
+                            htmlInput: { min: 0 },
+                            input: { startAdornment: <InputAdornment position="start">€</InputAdornment> },
+                          }}
                         />
-                      </label>
-                    )}
-                  </div>
-                );
-              })}
+                      )}
+                    </Stack>
+                  );
+                })}
+              </Stack>
             </>
           )}
 
-          <label>
-            Motivatie (optioneel, alleen voor de verkoper na onthulling)
-            <textarea value={motivation} onChange={(e) => setMotivation(e.target.value)} />
-          </label>
-          <button onClick={onBid} disabled={sealing || (myBid !== null && !listing.rules.aanpassenToegestaan)}>
-            {sealing ? "Verzegelen via drand…" : myBid ? "Aangepast bod verzegelen" : "Verzegeld bod indienen"}
-          </button>
-        </section>
+          <Box>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<LockIcon />}
+              onClick={onBid}
+              disabled={sealing || (myBid !== null && !listing.rules.aanpassenToegestaan)}
+            >
+              {sealing ? "Verzegelen via drand…" : myBid ? "Aangepast bod verzegelen" : "Verzegeld bod indienen"}
+            </Button>
+          </Box>
+        </Sectie>
       )}
 
-      {listing.status === "gesloten" && <p>Gesloten. Wacht op automatische onthulling via de drand-timelock…</p>}
-
-      {listing.status === "buiten_procedure" && (
-        <section>
-          <h2>Buiten deze procedure afgehandeld</h2>
-          <p>
-            Deze verkoop is niet via de deadline en de gunning afgerond. Opgegeven reden:{" "}
-            <strong>{listing.buitenProcedureReden}</strong>
-            {listing.buitenProcedureAt && ` (${new Date(listing.buitenProcedureAt).toLocaleString("nl-NL")})`}
-          </p>
-          <p>
-            Verzegelde biedingen die op dat moment nog niet geopend waren, blijven verzegeld: ze worden niet alsnog
-            opengemaakt voor een procedure die niet doorgaat. Wat je wél houdt, is het bewijs dát je bod er stond en
-            dat het nooit geopend is, zichtbaar in de keten hieronder.
-          </p>
-        </section>
+      {listing.status === "gesloten" && (
+        <Sectie
+          titel="Gesloten"
+          toelichting="De deadline is verstreken. Zodra drand de rondesleutel publiceert, gaan alle biedingen vanzelf open. Je hoeft hier niets voor te doen en niet online te blijven."
+        >
+          <LinearProgress />
+        </Sectie>
       )}
 
-      {isSeller && listing.status !== "buiten_procedure" && listing.status !== "onherroepelijk" && (
-        <section>
-          <h2>Buiten deze procedure afhandelen</h2>
-          <p>
-            Wordt de woning onderhands verkocht, van de markt gehaald of anderszins buiten dit biedproces om
-            afgehandeld? Sluit de procedure dan hier af met een reden. Een inschrijving die zonder uitleg stilvalt is
-            precies waarover kopers klagen; dit maakt er een vastgelegde eindstatus van, en alle bieders krijgen
-            automatisch het logboek.
-          </p>
-          <label>
-            Reden (komt onverkort in het openbare logboek)
-            <input
-              value={abortReason}
-              onChange={(e) => setAbortReason(e.target.value)}
-              maxLength={500}
-              placeholder="Bijvoorbeeld: woning onderhands verkocht buiten de inschrijving om"
-            />
-          </label>
-          <button onClick={onAbort} disabled={aborting}>
+      {isSeller && !afgerond && (
+        <Sectie
+          titel="Buiten deze procedure afhandelen"
+          toelichting="Wordt de woning onderhands verkocht, van de markt gehaald of anderszins buiten dit biedproces om afgehandeld? Sluit de procedure dan hier af met een reden. Een inschrijving die zonder uitleg stilvalt is precies waarover kopers klagen; dit maakt er een vastgelegde eindstatus van, en alle bieders krijgen automatisch het logboek."
+        >
+          <TextField
+            label="Reden"
+            value={abortReason}
+            onChange={(e) => setAbortReason(e.target.value)}
+            placeholder="Bijvoorbeeld: woning onderhands verkocht buiten de inschrijving om"
+            helperText="Komt onverkort in het openbare logboek, dus geen persoonsgegevens van bieders."
+            slotProps={{ htmlInput: { maxLength: 500 } }}
+          />
+          <Button color="warning" variant="outlined" onClick={onAbort} disabled={aborting} sx={{ alignSelf: "flex-start" }}>
             {aborting ? "Vastleggen…" : "Procedure afsluiten en logboek versturen"}
-          </button>
-        </section>
+          </Button>
+        </Sectie>
       )}
 
       {logbook && (
-        <section>
-          <h2>Biedlogboek (onthuld)</h2>
-          <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Bieder</th>
-                  <th>Bedrag</th>
-                  <th>Oplevering</th>
-                  <th>Geldig tot</th>
-                  <th>Voorbehouden</th>
-                  <th>Overname</th>
-                  <th>Geldig</th>
-                  {isSeller && <th>Gunning</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {logbook.entries.map((e, i) => (
-                  <tr key={i}>
-                    <td>{e.bidderRef}</td>
-                    <td>{e.valid ? `€ ${e.amount.toLocaleString("nl-NL")}` : "-"}</td>
-                    <td>{e.valid ? isoToDate(e.handoverDate) : "-"}</td>
-                    <td>{e.valid ? isoToDate(e.validUntil) : "-"}</td>
-                    <td>
-                      {!e.valid
-                        ? "-"
-                        : e.conditions.length === 0
-                          ? "geen"
-                          : e.conditions
-                              .map((c) => VOORBEHOUD_LABELS.find((v) => v.type === c.type)?.label ?? c.type)
-                              .join(", ")}
-                    </td>
-                    <td>
-                      {!e.valid
-                        ? "-"
-                        : e.takeover.length === 0
-                          ? "geen"
-                          : e.takeover
-                              .map(
-                                (t) =>
-                                  `${labelForItem(t.itemId)}: ${CHOICE_LABELS[t.choice]}` +
-                                  (t.amount !== undefined ? ` (€ ${t.amount.toLocaleString("nl-NL")})` : ""),
-                              )
-                              .join("; ")}
-                    </td>
-                    <td>{e.valid ? "ja" : `nee (${e.invalidReason})`}</td>
-                    {isSeller && (
-                      <td>
-                        {listing.awardedBidId === e.bidId ? (
-                          <strong>gegund</strong>
-                        ) : listing.awardedBidId || !e.valid ? (
-                          "-"
-                        ) : (
-                          <button onClick={() => onAward(e.bidId)} disabled={awarding}>
-                            Gun aan deze bieder
-                          </button>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p>
-            De motivatie staat bewust niet in dit logboek: die gaat alleen naar de verkoper, niet naar de andere
-            bieders. Namen staan er ook niet in, en zijn tot de gunning voor niemand leesbaar.
-          </p>
-          {awardedIdentity && (
-            <p>
-              Identiteit vrijgegeven na gunning: <strong>{awardedIdentity.name}</strong>
-              {awardedIdentity.contact && ` (${awardedIdentity.contact})`}. Dat deze vrijgave plaatsvond, staat nu als
-              aparte regel in het logboek hierboven.
-            </p>
-          )}
-          {isSeller && listing.awardedBidId && !awardedIdentity && (
-            <p>
-              Er is gegund, maar de identiteit kon niet geopend worden. Dat gebeurt als deze browser de sleutel van
-              deze woning niet meer heeft, of als de bieder geen naam meestuurde.
-            </p>
-          )}
-          <h3>Is het logboek verstuurd?</h3>
-          {delivery ? (
-            <p>
-              Ja, op {new Date(delivery.deliveredAt).toLocaleString("nl-NL")} naar{" "}
-              {delivery.recipientRefs.length} betrokkene(n): {delivery.recipientRefs.join(", ")}. Dat staat als regel{" "}
-              {delivery.logIndex} (<code>logboek_verstuurd</code>) in de keten, dus of jij het hoort te krijgen is
-              geen kwestie van welles-nietes meer. Er staan alleen pseudonieme verwijzingen in, geen adressen.
-            </p>
+        <Sectie
+          titel="Biedlogboek"
+          toelichting="De motivatie staat hier bewust niet in: die gaat alleen naar de verkoper, niet naar de andere bieders. Namen staan er ook niet in, en zijn tot de gunning voor niemand leesbaar."
+        >
+          {logbook.entries.length === 0 ? (
+            <Alert severity="info">
+              Er zijn geen onthulde biedingen. Wat er wel is, staat in de keten hieronder: welke verzegelde biedingen er
+              stonden, en dat ze nooit geopend zijn.
+            </Alert>
           ) : (
-            <p>
-              Nog niet. Zodra de procedure een eindstatus bereikt, gaat het logboek vanzelf naar alle betrokkenen.
-              Je hoeft er niet om te vragen.
-            </p>
+            <TableContainer sx={{ overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Bieder</TableCell>
+                    <TableCell align="right">Bedrag</TableCell>
+                    <TableCell>Oplevering</TableCell>
+                    <TableCell>Geldig tot</TableCell>
+                    <TableCell>Voorbehouden</TableCell>
+                    <TableCell>Overname</TableCell>
+                    <TableCell>Geldig</TableCell>
+                    {isSeller && <TableCell>Gunning</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {logbook.entries.map((e, i) => (
+                    <TableRow key={i} selected={listing.awardedBidId === e.bidId}>
+                      <TableCell>{e.bidderRef}</TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                        {e.valid ? euro(e.amount) : "-"}
+                      </TableCell>
+                      <TableCell>{e.valid ? isoToDate(e.handoverDate) : "-"}</TableCell>
+                      <TableCell>{e.valid ? isoToDate(e.validUntil) : "-"}</TableCell>
+                      <TableCell>
+                        {!e.valid
+                          ? "-"
+                          : e.conditions.length === 0
+                            ? "geen"
+                            : e.conditions
+                                .map((c) => VOORBEHOUD_LABELS.find((v) => v.type === c.type)?.label ?? c.type)
+                                .join(", ")}
+                      </TableCell>
+                      <TableCell>
+                        {!e.valid
+                          ? "-"
+                          : e.takeover.length === 0
+                            ? "geen"
+                            : e.takeover
+                                .map(
+                                  (t) =>
+                                    `${labelForItem(t.itemId)}: ${CHOICE_LABELS[t.choice]}` +
+                                    (t.amount !== undefined ? ` (${euro(t.amount)})` : ""),
+                                )
+                                .join("; ")}
+                      </TableCell>
+                      <TableCell>{e.valid ? "ja" : `nee (${e.invalidReason})`}</TableCell>
+                      {isSeller && (
+                        <TableCell>
+                          {listing.awardedBidId === e.bidId ? (
+                            <Chip size="small" color="primary" label="gegund" />
+                          ) : listing.awardedBidId || !e.valid ? (
+                            "-"
+                          ) : (
+                            <Button size="small" variant="outlined" onClick={() => onAward(e.bidId)} disabled={awarding}>
+                              Gun aan deze bieder
+                            </Button>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
 
-          <h3>Zelf controleren</h3>
-          <p>
+          {awardedIdentity && (
+            <Alert severity="success">
+              <AlertTitle>Identiteit vrijgegeven na gunning</AlertTitle>
+              <strong>{awardedIdentity.name}</strong>
+              {awardedIdentity.contact && ` (${awardedIdentity.contact})`}. Dat deze vrijgave plaatsvond, staat nu als
+              aparte regel in het logboek.
+            </Alert>
+          )}
+          {isSeller && listing.awardedBidId && !awardedIdentity && (
+            <Alert severity="warning">
+              Er is gegund, maar de identiteit kon niet geopend worden. Dat gebeurt als deze browser de sleutel van
+              deze woning niet meer heeft, of als de bieder geen naam meestuurde.
+            </Alert>
+          )}
+
+          <Divider textAlign="left">
+            <Typography variant="overline">Is het logboek verstuurd?</Typography>
+          </Divider>
+          {delivery ? (
+            <Alert severity="success" icon={<VerifiedIcon fontSize="inherit" />}>
+              Ja, op {new Date(delivery.deliveredAt).toLocaleString("nl-NL")} naar {delivery.recipientRefs.length}{" "}
+              betrokkene(n): {delivery.recipientRefs.join(", ")}. Dat staat als regel {delivery.logIndex} (
+              <code>logboek_verstuurd</code>) in de keten, dus of jij het hoort te krijgen is geen kwestie van
+              welles-nietes meer. Er staan alleen pseudonieme verwijzingen in, geen adressen.
+            </Alert>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Nog niet. Zodra de procedure een eindstatus bereikt, gaat het logboek vanzelf naar alle betrokkenen. Je
+              hoeft er niet om te vragen.
+            </Typography>
+          )}
+
+          <Divider textAlign="left">
+            <Typography variant="overline">Zelf controleren</Typography>
+          </Divider>
+          <Typography variant="body2" color="text.secondary">
             Elke regel hierboven bevat de hash van de regel ervóór. Wie achteraf iets wijzigt, invoegt of weghaalt,
             breekt die keten op een zichtbare plek. Met de knop hieronder rekent <em>jouw browser</em> de hele keten
             opnieuw uit. Je hoeft deze server dus niet te geloven: je controleert zijn huiswerk.
-          </p>
-          <button onClick={onVerify}>Controleer zelf of er niets gewijzigd is</button>
+          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ alignItems: "flex-start" }}>
+            <Button variant="outlined" onClick={onVerify}>
+              Controleer zelf of er niets gewijzigd is
+            </Button>
+            <Button variant="text" startIcon={<DownloadIcon />} onClick={downloadLogbook}>
+              Download logboek.json
+            </Button>
+          </Stack>
           {chainCheck && (
-            <p>
+            <Alert severity={chainCheck.valid ? "success" : "error"}>
               {chainCheck.valid
-                ? "✅ De keten klopt: geen enkele regel is gewijzigd, ingevoegd of verwijderd."
-                : `❌ De keten breekt bij regel ${chainCheck.firstBrokenIndex}.`}
-            </p>
+                ? "De keten klopt: geen enkele regel is gewijzigd, ingevoegd of verwijderd."
+                : `De keten breekt bij regel ${chainCheck.firstBrokenIndex}.`}
+            </Alert>
           )}
-          <p>
+          <Typography variant="body2" color="text.secondary">
             Wat deze controle <strong>niet</strong> zegt: of dit logboek echt van deze instantie komt. Daarvoor is de
             handtekening onderaan het logboek nodig, en die kun je alleen buiten de browser natrekken. Download het
             logboek en draai <code>openbod-verify logbook logboek.json</code> uit <code>packages/verifier</code>; dat
             controleert de keten, de root-hash én de handtekening.
-          </p>
-          <button
-            onClick={() => {
-              const blob = new Blob([JSON.stringify(logbook, null, 2)], { type: "application/json" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `logboek-${listing.id}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-          >
-            Download logboek.json
-          </button>
-        </section>
+          </Typography>
+        </Sectie>
       )}
-    </div>
+    </Stack>
   );
 }

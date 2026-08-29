@@ -1,7 +1,25 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
+import MenuItem from "@mui/material/MenuItem";
+import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
+import AddIcon from "@mui/icons-material/AddOutlined";
+import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
+import KeyIcon from "@mui/icons-material/VpnKeyOutlined";
 import { coreApi, type OvernameStatus } from "../lib/api";
 import { generateSellerKeypair, saveSellerKey } from "../lib/identity-envelope";
+import { Sectie } from "../components/Sectie";
 
 const STATUS_OPTIONS: { value: OvernameStatus; label: string }[] = [
   { value: "blijft_achter", label: "Blijft achter" },
@@ -74,94 +92,140 @@ export function CreateListing() {
   }
 
   return (
-    <div>
-      <h1>Woning aanmaken</h1>
-      <p>
-        Bij het aanmaken genereert je browser een sleutelpaar. Bieders versleutelen hun naam daarnaartoe, zodat deze
-        server en de makelaar nooit zien wie er biedt. Pas als je gunt, kun jij die naam openen, met de sleutel die in
-        deze browser blijft. Raak je die kwijt, dan blijft de naam onleesbaar.
-      </p>
-      <form onSubmit={onSubmit}>
-        <label>
-          Adres
-          <input value={address} onChange={(e) => setAddress(e.target.value)} required />
-        </label>
-        <label>
-          Vraagprijs (EUR)
-          <input type="number" value={askingPrice} onChange={(e) => setAskingPrice(Number(e.target.value))} required />
-        </label>
-        <label>
-          Sluit over (minuten), kort voor de demo, drand quicknet-ronde is 3s
-          <input
+    <Stack component="form" onSubmit={onSubmit} spacing={3}>
+      <Stack spacing={1.5}>
+        <Typography variant="h1">Woning aanmaken</Typography>
+        <Alert severity="info" icon={<KeyIcon fontSize="inherit" />}>
+          <AlertTitle>Je browser maakt zo een sleutelpaar aan</AlertTitle>
+          Bieders versleutelen hun naam naar de publieke helft, zodat deze server en de makelaar nooit zien wie er
+          biedt. Pas als je gunt, kun jij die naam openen met de private helft, die in deze browser blijft. Raak je die
+          kwijt, dan blijft de naam onleesbaar. Dat is geen bug maar de hele garantie.
+        </Alert>
+      </Stack>
+
+      <Sectie titel="De woning">
+        <Stack spacing={2}>
+          <TextField label="Adres" value={address} onChange={(e) => setAddress(e.target.value)} required />
+          <TextField
+            label="Vraagprijs"
             type="number"
-            min={1}
+            value={askingPrice}
+            onChange={(e) => setAskingPrice(Number(e.target.value))}
+            required
+            slotProps={{ input: { startAdornment: <InputAdornment position="start">€</InputAdornment> } }}
+          />
+          <TextField
+            label="Sluit over (minuten)"
+            type="number"
+            slotProps={{ htmlInput: { min: 1 } }}
             value={minutesFromNow}
             onChange={(e) => setMinutesFromNow(Number(e.target.value))}
             required
+            helperText="Kort houden voor de demo. Een drand quicknet-ronde duurt 3 seconden, dus de onthulling is snel te zien."
           />
-        </label>
+        </Stack>
+      </Sectie>
 
-        <h2>Spelregels</h2>
-        <p>Deze staan vooraf vast en gelden voor iedereen gelijk.</p>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={intrekkenToegestaan} onChange={(e) => setIntrekken(e.target.checked)} />
-          Bieder mag zijn bod vóór de deadline intrekken
-        </label>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={aanpassenToegestaan} onChange={(e) => setAanpassen(e.target.checked)} />
-          Bieder mag zijn bod vóór de deadline aanpassen
-        </label>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={aantalBiedingenZichtbaar}
-            onChange={(e) => setAantalZichtbaar(e.target.checked)}
+      <Sectie
+        titel="Spelregels"
+        toelichting="Deze staan vanaf nu vast en gelden voor iedereen gelijk. Ze zijn ook zichtbaar voor bieders, want spelregels die halverwege kunnen veranderen zijn geen spelregels."
+      >
+        <Stack>
+          <FormControlLabel
+            control={<Checkbox checked={intrekkenToegestaan} onChange={(e) => setIntrekken(e.target.checked)} />}
+            label="Bieder mag zijn bod vóór de deadline intrekken"
           />
-          Aantal biedingen is zichtbaar (bedragen nooit, tot de deadline)
-        </label>
-
-        <h2>Roerende zaken</h2>
-        <p>Wat kan de koper overnemen? De bieder kiest hier straks per item.</p>
-        {items.map((item, i) => (
-          <div key={i}>
-            <label>
-              Item
-              <input
-                value={item.label}
-                placeholder="bijv. Tuinset"
-                onChange={(e) => setItem(i, { label: e.target.value })}
+          <FormControlLabel
+            control={<Checkbox checked={aanpassenToegestaan} onChange={(e) => setAanpassen(e.target.checked)} />}
+            label="Bieder mag zijn bod vóór de deadline aanpassen"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={aantalBiedingenZichtbaar}
+                onChange={(e) => setAantalZichtbaar(e.target.checked)}
               />
-            </label>
-            <label>
-              Status
-              <select value={item.status} onChange={(e) => setItem(i, { status: e.target.value as OvernameStatus })}>
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {item.status === "gevraagd_bedrag" && (
-              <label>
-                Gevraagd bedrag (EUR)
-                <input type="number" min={0} value={item.amount} onChange={(e) => setItem(i, { amount: e.target.value })} />
-              </label>
-            )}
-            <button type="button" onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}>
-              Verwijderen
-            </button>
-          </div>
-        ))}
-        <button type="button" onClick={() => setItems((prev) => [...prev, { ...EMPTY_ITEM }])}>
-          Item toevoegen
-        </button>
+            }
+            label="Aantal biedingen is zichtbaar (bedragen nooit, tot de deadline)"
+          />
+        </Stack>
+      </Sectie>
 
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Bezig…" : "Aanmaken"}
-        </button>
-        {error && <p style={{ color: "crimson" }}>{error}</p>}
-      </form>
-    </div>
+      <Sectie
+        titel="Roerende zaken"
+        toelichting="Wat kan de koper overnemen? De bieder kiest hier straks per item, en die keuze zit mee in het verzegelde bod. Zo wordt het onderdeel van de afweging in plaats van iets dat er los achteraan komt."
+        actie={
+          <Button
+            type="button"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => setItems((prev) => [...prev, { ...EMPTY_ITEM }])}
+          >
+            Item
+          </Button>
+        }
+      >
+        <Stack spacing={1.5}>
+          {items.map((item, i) => (
+            <Paper key={i} variant="outlined" sx={{ p: 2, bgcolor: "background.default" }}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ alignItems: "flex-start" }}>
+                <TextField
+                  label="Item"
+                  placeholder="bijv. Tuinset"
+                  value={item.label}
+                  onChange={(e) => setItem(i, { label: e.target.value })}
+                />
+                <TextField
+                  select
+                  label="Status"
+                  value={item.status}
+                  onChange={(e) => setItem(i, { status: e.target.value as OvernameStatus })}
+                >
+                  {STATUS_OPTIONS.map((o) => (
+                    <MenuItem key={o.value} value={o.value}>
+                      {o.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                {item.status === "gevraagd_bedrag" && (
+                  <TextField
+                    label="Gevraagd"
+                    type="number"
+                    slotProps={{
+                      htmlInput: { min: 0 },
+                      input: { startAdornment: <InputAdornment position="start">€</InputAdornment> },
+                    }}
+                    value={item.amount}
+                    onChange={(e) => setItem(i, { amount: e.target.value })}
+                  />
+                )}
+                <Tooltip title="Item verwijderen">
+                  <IconButton
+                    type="button"
+                    onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}
+                    aria-label={`Item ${item.label || i + 1} verwijderen`}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            </Paper>
+          ))}
+          {items.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Geen roerende zaken opgegeven. Bieders zien dan alleen de woning zelf.
+            </Typography>
+          )}
+        </Stack>
+      </Sectie>
+
+      {error && <Alert severity="error">{error}</Alert>}
+
+      <Box>
+        <Button type="submit" variant="contained" size="large" disabled={submitting}>
+          {submitting ? "Sleutelpaar maken en aanmaken…" : "Woning aanmaken"}
+        </Button>
+      </Box>
+    </Stack>
   );
 }

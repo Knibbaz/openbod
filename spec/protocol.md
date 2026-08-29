@@ -31,7 +31,7 @@ Dit is de kern. Elke invariant is een eigenschap die altijd moet gelden en die m
 - **I8 Anchoring-consistentie.** Een gepubliceerd logboek moet kloppen met de geanchorde root-hashes. Herschrijven achteraf is zichtbaar.
 - **I9 Regeltransparantie.** De procesregels (intrekken, aanpassen, zichtbaarheid van het aantal, wie inzage heeft) staan vast bij het aanmaken van de woning, zijn zichtbaar, en kunnen niet halverwege veranderen.
 - **I10 Identiteitsonafhankelijkheid.** De integriteitsgaranties gelden ongeacht de gebruikte identiteitsmethode.
-- **I11 Privacy.** Motivatie en persoonsgegevens komen niet in het openbare logboek. In de gedeelde publieke log staan alleen hashes.
+- **I11 Privacy.** Motivatie en persoonsgegevens komen niet in het openbare logboek. In de gedeelde publieke log staan alleen hashes. Pseudoniemen zijn niet terug te rekenen naar een persoon, ook niet met een woordenlijst van waarschijnlijke waarden (§7).
 - **I13 Vastgelegde afhandeling.** Elke procedure eindigt in een vastgelegde eindstatus. Wordt zij buiten het systeem om afgehandeld (onderhandse verkoop, intrekking), dan is dat een gelogde gebeurtenis met opgegeven reden. Een procedure kan niet stilvallen zonder spoor.
 - **I14 Aantoonbare verstrekking.** Het biedlogboek gaat bij het bereiken van een eindstatus automatisch naar alle betrokkenen, zonder dat iemand erom hoeft te vragen, en die verzending is zelf een logregel met uitsluitend pseudonieme ontvangers.
 - **I12 Anonimiteit tot gunning.** De identiteit van een bieder is voor de operator en de makelaar op geen enkel moment leesbaar, en is voor de verkoper pas beschikbaar nadat hij aan die bieder gunt. Vrijgave is een gelogde gebeurtenis.
@@ -109,6 +109,10 @@ Het biedlogboek is sinds 2023 verplicht, maar in de praktijk moesten kopers erom
 
 De core ontvangt een ondertekend token met minimaal `iss, sub, aud, assurance_level, iat, exp` en gebruikt alleen `sub` als bieder-identiteit. De core verandert niet als de methode wijzigt van magic link naar iDIN. Het `assurance_level` legt de sterkte vast (I10).
 
+`sub` moet een pseudoniem zijn dat niet uit het onderliggende identificerende gegeven af te leiden is. Een kale hash volstaat niet: een e-mailadres heeft daarvoor veel te weinig entropie, en wie zo'n hash heeft plus een lijst kandidaat-adressen rekent in seconden terug wie erachter zit. Dat zou "de core kent geen adressen" tot een bewering over opslag maken in plaats van over afleidbaarheid, en juist dat onderscheid is waar deze spec anderen op aanspreekt.
+
+De referentie-implementatie gebruikt daarom `sub = HMAC-SHA256(pepper, genormaliseerd adres)`, met een pepper die de identiteitslaag nooit verlaat. Deterministisch, dus dezelfde persoon houdt dezelfde `sub`; onraadbaar zonder het geheim. Dezelfde eis geldt voor elke pseudonieme verwijzing die publiek wordt, zoals de `bidderRef` in het openbare logboek.
+
 ## 8. Versionering en compatibiliteit
 
 - Semver op protocol en implementatie. Breaking changes zijn een major versie.
@@ -126,6 +130,7 @@ De core ontvangt een ondertekend token met minimaal `iss, sub, aud, assurance_le
 | Kwaadwillende bieder | Beweren dat zijn bod ontbrak | I7 (ontvangstbewijs plus inclusiebewijs) |
 | Instantie | Vals claimen dat zij conform en actueel is | Certificering, trust-list, anchoring |
 | Netwerk of derde | Inhoud van biedingen onderscheppen | I1 (verzegeld bij de bieder) |
+| Oneerlijke operator | Pseudoniemen terugrekenen naar personen met een adressenlijst | I11, §7 (HMAC met pepper, geen kale hash) |
 | Oneerlijke makelaar | Weten wie er biedt, en daarop sturen | I12 (envelop versleuteld naar de verkoper, niet naar de instantie) |
 | Oneerlijke makelaar | Een inschrijving laten stilvallen en onderhands verkopen | I13 (eindstatus met gelogde reden verplicht) |
 | Oneerlijke makelaar | Het biedlogboek niet verstrekken en dat betwisten | I14 (verstrekking is automatisch en zelf een logregel) |

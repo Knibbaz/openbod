@@ -4,8 +4,9 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
 import { SignJWT } from "jose";
-import { randomUUID, createHash, timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { loadKeys } from "./keys.js";
+import { deriveSubject, loadSubjectPepper } from "./subject.js";
 
 /**
  * Identity-backend: authenticatie via magic link, geeft een OIDC-stijl JWT
@@ -64,6 +65,29 @@ const DELIVERY_SHARED_SECRET = process.env.DELIVERY_SHARED_SECRET ?? "";
 const pendingLinks = new Map<string, PendingLink>();
 const keys = await loadKeys();
 
+/**
+ * Geheim waarmee een e-mailadres naar een pseudonieme `sub` gaat. Zie
+ * `subject.ts` voor waarom een kale hash hier niet volstaat. Ontbreekt hij in
+ * productie, dan start deze backend bewust niet op: stil terugvallen op iets
+ * zwakkers zou de claim ondermijnen die de rest van het systeem draagt.
+ */
+let subjectPepper: Buffer;
+try {
+  subjectPepper = loadSubjectPepper();
+} catch (err) {
+  // Een operator die dit fout heeft staan, moet weten wát er mis is en hoe het
+  // moet, niet een stacktrace hoeven lezen. Doorstarten is geen optie: dan zou
+  // deze instantie stilletjes zwakkere pseudoniemen uitdelen dan zij belooft.
+  console.error(`[identity] kan niet starten: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
+if (!process.env.IDENTITY_SUBJECT_PEPPER) {
+  console.warn(
+    "[identity] geen IDENTITY_SUBJECT_PEPPER gezet: er is een vluchtige gegenereerd. " +
+      "Subjects veranderen bij elke herstart, dus eerdere biedingen zijn niet meer aan een gebruiker te koppelen.",
+  );
+}
+
 const app = Fastify({
   logger: false,
   bodyLimit: 16 * 1024,
@@ -121,7 +145,7 @@ app.post(
     }
     pending.used = true;
 
-    const sub = createHash("sha256").update(pending.email).digest("hex");
+    const sub = deriveSubject(pending.email, subjectPepper);
     knownSubjects.set(sub, pending.email);
     const jwt = await new SignJWT({ assurance_level: "email" })
       .setProtectedHeader({ alg: "ES256", kid: keys.kid })

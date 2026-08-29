@@ -49,6 +49,23 @@ Testcases:
 
 ## E2. Verzegeld bieden (commit)
 
+### E2-S0 Lekcheck over de volledige toestand
+Als toetser wil ik kunnen aantonen dat een waarde nergens in de instantie staat, zodat "de operator kan niet meekijken" een controleerbare eigenschap is in plaats van een belofte.
+
+Acceptatiecriteria:
+- Een test dumpt de complete objectgraaf van de store, inclusief Maps en interne velden, en zoekt daarin naar de echte waarden.
+- Vóór de deadline komen bedrag, motivatie, naam en contact nergens voor.
+- Na de onthulling hoort het bedrag er wél te staan; naam en contact nog steeds niet.
+- Ook na gunning zijn naam en contact afwezig: de envelop gaat de deur uit zonder geopend te zijn.
+- De test bewijst zichzelf door aan te tonen dat de dump de commitment wél vindt, dus dat afwezigheid geen onbereikbaarheid is.
+
+Testcases:
+- TC1: dump vóór de deadline bevat geen enkele plaintextwaarde.
+- TC2: dump na de onthulling bevat het bedrag, maar geen identiteit.
+- TC3: dump na gunning bevat nog steeds geen identiteit.
+- TC4: het openbare logboek bevat het bedrag en geen motivatie.
+- TC5: een ingetrokken bod blijft onleesbaar en blijft zichtbaar in de keten (I6).
+
 ### E2-S1 Een verzegeld bod plaatsen
 Als bieder wil ik mijn bod versleuteld indienen, zodat niemand het vóór de deadline kan lezen.
 
@@ -150,10 +167,14 @@ Als bieder wil ik inloggen via een e-maillink, zodat ik zonder wachtwoord kan bi
 Acceptatiecriteria:
 - De identity-backend geeft een OIDC-token met een pseudonieme sub op niveau email.
 - De core verifieert het token en gebruikt alleen sub.
+- De sub is `HMAC-SHA256(pepper, genormaliseerd adres)`, niet een kale hash van het adres. Een e-mailadres heeft te weinig entropie voor `sha256(adres)`: met een lijst kandidaat-adressen is zo'n hash gewoon terug te rekenen, en dan is "de core kent geen e-mailadressen" een bewering over opslag in plaats van over afleidbaarheid.
+- Zonder pepper start de backend in productie niet op.
 
 Testcases:
 - TC1: een geldige magic link levert een sessie en een token op.
 - TC2 (beveiliging): een verlopen of hergebruikte link wordt geweigerd.
+- TC3 (beveiliging): een sub is niet te raden uit het adres zonder de pepper, ook niet met een woordenlijst van gebruikelijke varianten.
+- TC4 (beveiliging): een ontbrekende pepper in productie en een te korte pepper worden geweigerd.
 
 ### E5-S2 Pluggable identiteit
 Als operator wil ik later iDIN toevoegen zonder de core te wijzigen, zodat de biedlogica identiek blijft.
@@ -235,6 +256,24 @@ Testcases:
 - TC1: een geldig logboek plus ontvangstbewijs verifieert.
 - TC2 (beveiliging): een gemanipuleerd logboek faalt de verifier, met aanwijzing van de eerste kapotte regel.
 
+### E8-S2 Demoscenario dat de garanties laat zien
+Als bezoeker wil ik een uitgespeeld scenario zien waarin per stap staat wat elke partij op dat moment kan zien, zodat ik de garanties begrijp zonder de code te lezen.
+
+**Status: nog niet gebouwd, en het heeft echt werk nodig.** De onderliggende bewijzen bestaan wel (zie de lekcheck in `packages/core/test/invariants/geen-lek.test.ts` en de subject-tests in `packages/identity/test/subject.test.ts`), maar er is nog geen scenario dat ze aan een bezoeker toont.
+
+Het lastige zit niet in het script maar in de eis eronder: de tekst moet uit de echte toestand komen, niet uit proza. Een geschreven rondleiding ("Alice biedt nu 510.000") bewijst niets, want die tekst klopt ook als het systeem liegt. Wat overtuigt, is een dump van wat de instantie op dat moment werkelijk in handen heeft, met de echte waarden als zoekterm en nul treffers. Dat vraagt om een vorm waarin de uitvoer gegenereerd wordt en de uitleg eromheen geschreven, zonder dat die twee uit elkaar kunnen lopen.
+
+Openstaande vragen voordat dit gebouwd kan worden:
+- Draait het scenario tegen een echte instantie (traag, want drand-rondes van 3s, maar eerlijk) of tegen vastgelegde uitvoer (snel, maar dan moet aantoonbaar zijn dat die uitvoer echt is)?
+- Hoe voorkom je dat de uitlegtekst na een codewijziging stilletjes niet meer klopt bij de uitvoer?
+- Hoort dit in de frontend, in een CLI, of allebei met dezelfde bron?
+
+Acceptatiecriteria (concept):
+- Per stap is zichtbaar wat identity weet, wat de core weet en wat de verkoper kan openen.
+- De getoonde uitvoer is gegenereerd uit een echte doorloop, niet met de hand geschreven.
+- Een poging tot vroeg ontsleutelen en een poging tot openen van de identiteitsenvelop staan er zichtbaar als mislukt in.
+- De lekcheck over de volledige toestand hoort bij de uitvoer.
+
 ## E9. Federatie en conformiteit
 
 ### E9-S1 Conformance-suite
@@ -278,7 +317,7 @@ Testcases:
 
 Minimale set om het verhaal te tonen en een subsidieaanvraag te onderbouwen: E1-S1, E1-S2, E2-S1, E2-S2, E3-S1, E3-S2, E4-S1, E4-S3, E5-S1, E6-S2, E7-S1, E7-S2, E8-S1.
 
-Later: E1-S3, E4-S2, E5-S2, E6-S1, E9, E10.
+Later: E1-S3, E4-S2, E5-S2, E6-S1, E8-S2, E9, E10.
 
 ## Testsoorten
 

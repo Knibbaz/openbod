@@ -98,6 +98,17 @@ elkaar alleen via een geverifieerd token kennen (ARCHITECTURE.md §5). Dat `core
 de JWKS intern ophaalt (`http://identity:4001/...`) terwijl de issuer de publieke
 URL is, is bewust: de issuer-claim is wat de bezoeker kan controleren.
 
+## Pseudonieme subjects
+
+`IDENTITY_SUBJECT_PEPPER` is het geheim waarmee een e-mailadres naar de `sub` gaat die
+de core als enige identiteitsgegeven ziet. Zonder pepper zou dat `sha256(adres)` zijn,
+en dat is met een lijst kandidaat-adressen gewoon terug te rekenen. De identity-backend
+weigert daarom in productie te starten als de pepper ontbreekt of korter is dan 32 bytes.
+
+Wissel je de pepper, dan krijgt iedereen een nieuwe `sub` en zijn bestaande biedingen
+niet meer aan hun bieder te koppelen. Behandel hem dus als een sleutel, niet als een
+instelling.
+
 ## Automatische verstrekking van het biedlogboek
 
 Zodra een woning een eindstatus bereikt (gegund of buiten de procedure afgehandeld)
