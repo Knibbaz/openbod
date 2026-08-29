@@ -53,6 +53,16 @@ procedure om is afgehandeld, en eentje met strengere spelregels. Elk half uur wo
 gewist en begint het scenario opnieuw. De frontend haalt dat op bij `GET /demo` en toont
 er een banner over, dus een echte instantie laat die mededeling vanzelf weg.
 
+De beelden bij die woningen staan in `packages/web-demo/public/demo` en worden gemaakt
+door `packages/web-demo/scripts/genereer-demobeelden.mjs` (draaien met `node`, en de
+uitvoer staat in de repo zodat de build ze niet nodig heeft). Het zijn getekende
+illustraties en geen foto's: een echte woningfoto is van de fotograaf of de makelaar, en
+dit project kan de sector moeilijk aanspreken op het overnemen van andermans gegevens
+terwijl het zelf foto's leent. Ze zijn ook eerlijk over wat ze zijn, want de woningen
+bestaan niet. Sinds deze beelden bestaat naast de https-eis op fotovelden ook een pad op
+dezelfde origin (`/demo/zwolle-gevel.svg`); dat is meteen de weg voor een white-label
+instantie met eigen beeldmateriaal.
+
 De seeder in `packages/core/src/demo/scenario.ts` is de enige plek waar de core zelf
 biedingen verzegelt. In een echte instantie gebeurt dat uitsluitend in de browser van de
 bieder: zou de server het doen, dan kent zij de bedragen en is de hele garantie weg.

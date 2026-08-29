@@ -13,6 +13,12 @@ import type { BidPayload } from "../model/types.js";
  * procedure om is afgehandeld. Na dertig minuten begint alles opnieuw, zodat de
  * demo niet volloopt met achtergelaten biedingen.
  *
+ * De beelden bij de woningen staan in de repo (`packages/web-demo/public/demo`,
+ * gemaakt door `scripts/genereer-demobeelden.mjs`) en zijn getekend, niet
+ * gefotografeerd. Een echte woningfoto is van de fotograaf of de makelaar, en
+ * dit project kan de sector moeilijk aanspreken op het overnemen van andermans
+ * gegevens terwijl het zelf foto's leent.
+ *
  * Dit is de enige plek waar de core zelf biedingen verzegelt. In een echte
  * instantie gebeurt dat uitsluitend bij de bieder in de browser: zou de server
  * het doen, dan kent zij de bedragen en is de hele garantie weg. Hier simuleert
@@ -80,6 +86,7 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
           { label: "Tuinhuis", status: "in_overleg" },
           { label: "Vaatwasser", status: "blijft_achter" },
         ],
+        fotos: ["/demo/zwolle-gevel.svg", "/demo/zwolle-tuin.svg", "/demo/zwolle-interieur.svg"],
         omschrijving: `Jaren-dertig woning met een diepe tuin op het zuiden. ${demoNoot} Op deze woning kun je zelf een bod uitbrengen; de sluitingstijd ligt aan het eind van deze demoronde.`,
         kenmerken: { woonoppervlak: 118, perceeloppervlak: 240, kamers: 5, slaapkamers: 3, bouwjaar: 1932, energielabel: "C" },
       },
@@ -97,6 +104,7 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         deadline: overMinuten(8),
         rules: { intrekkenToegestaan: true, aanpassenToegestaan: true, aantalBiedingenZichtbaar: true },
         takeoverItems: [{ label: "Keukenapparatuur", status: "gevraagd_bedrag", amount: 1_200 }],
+        fotos: ["/demo/deventer-gevel.svg", "/demo/deventer-tuin.svg", "/demo/deventer-interieur.svg"],
         omschrijving: `Hoekwoning aan het water, kort bij het centrum. ${demoNoot} De sluitingstijd is over een paar minuten: blijf kijken, dan zie je de biedingen vanzelf opengaan.`,
         kenmerken: { woonoppervlak: 94, perceeloppervlak: 165, kamers: 4, slaapkamers: 3, bouwjaar: 1968, energielabel: "D" },
       },
@@ -116,6 +124,7 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         deadline: overMinuten(1.5),
         rules: { intrekkenToegestaan: false, aanpassenToegestaan: true, aantalBiedingenZichtbaar: true },
         takeoverItems: [{ label: "Zonnepanelen", status: "blijft_achter" }],
+        fotos: ["/demo/apeldoorn-gevel.svg", "/demo/apeldoorn-tuin.svg", "/demo/apeldoorn-interieur.svg"],
         omschrijving: `Vrijstaande woning aan de bosrand. ${demoNoot} Deze inschrijving is al gesloten: hier zie je de uitslag, het volledige logboek en aan wie er gegund is.`,
         kenmerken: { woonoppervlak: 156, perceeloppervlak: 620, kamers: 6, slaapkamers: 4, bouwjaar: 1994, energielabel: "A" },
       },
@@ -135,6 +144,7 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         deadline: overMinuten(22),
         rules: { intrekkenToegestaan: true, aanpassenToegestaan: true, aantalBiedingenZichtbaar: true },
         takeoverItems: [],
+        fotos: ["/demo/nijmegen-gevel.svg", "/demo/nijmegen-tuin.svg", "/demo/nijmegen-interieur.svg"],
         omschrijving: `Bovenwoning in de binnenstad. ${demoNoot} Deze verkoop is buiten de inschrijving om afgehandeld: de biedingen zijn nooit geopend, en dát is hier precies het bewijs dat de bieders in handen hebben.`,
         kenmerken: { woonoppervlak: 72, kamers: 3, slaapkamers: 2, bouwjaar: 1901, energielabel: "F" },
       },
@@ -150,6 +160,7 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         deadline: overMinuten(19),
         rules: { intrekkenToegestaan: false, aanpassenToegestaan: false, aantalBiedingenZichtbaar: false },
         takeoverItems: [{ label: "Gordijnen", status: "in_overleg" }],
+        fotos: ["/demo/leeuwarden-gevel.svg", "/demo/leeuwarden-tuin.svg", "/demo/leeuwarden-interieur.svg"],
         omschrijving: `Twee-onder-een-kap met garage. ${demoNoot} Hier gelden strengere spelregels: aanpassen en intrekken mag niet en het aantal biedingen is niet zichtbaar. Dat stond vooraf vast en geldt voor iedereen gelijk. Bieden kan.`,
         kenmerken: { woonoppervlak: 128, perceeloppervlak: 310, kamers: 5, slaapkamers: 4, bouwjaar: 2004, energielabel: "B" },
       },

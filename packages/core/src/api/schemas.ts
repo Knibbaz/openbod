@@ -57,6 +57,25 @@ export const fotoUrlSchema = z
     message: "alleen https-URL's zijn toegestaan",
   });
 
+/**
+ * Foto's mogen ook bij de instantie zelf vandaan komen, als pad op dezelfde
+ * origin: `/demo/zwolle-gevel.svg`. Dat is nodig voor de demo-woningen, die hun
+ * beelden uit de repo halen in plaats van van een vreemde host, en het is ook
+ * de weg voor een white-label instantie met eigen beeldmateriaal.
+ *
+ * Alleen een enkele slash aan het begin: `//host/pad` is protocol-relatief en
+ * dus wél een andere host, en een `javascript:`- of `data:`-URL begint nooit
+ * met een slash. Backslashes weren we omdat browsers die op sommige plekken als
+ * slash lezen.
+ */
+const zelfdeOriginPad = z
+  .string()
+  .trim()
+  .max(2_000)
+  .regex(/^\/[^/\\][^\\]*$/, { message: "een eigen pad moet met één slash beginnen" });
+
+export const fotoBronSchema = z.union([fotoUrlSchema, zelfdeOriginPad]);
+
 export const kenmerkenSchema = z
   .object({
     woonoppervlak: z.number().int().positive().max(100_000).optional(),
@@ -94,7 +113,7 @@ export const createListingBody = z.object({
   // Pseudonieme sub van de verkoper (sha256-hex, zelfde vorm als bidderSub),
   // zodat het logboek straks ook naar hem gaat en niet alleen naar de bieders.
   sellerSub: z.string().regex(/^[0-9a-f]{64}$/).optional(),
-  fotos: z.array(fotoUrlSchema).max(24).optional(),
+  fotos: z.array(fotoBronSchema).max(24).optional(),
   omschrijving: safeText(5_000).optional(),
   kenmerken: kenmerkenSchema.optional(),
   // Pagina van de makelaar of aanbodsite. Zelfde https-eis als bij foto's: dit
