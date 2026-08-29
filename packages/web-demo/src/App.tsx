@@ -16,6 +16,7 @@ import { BeheerNieuw } from "./pages/BeheerNieuw";
 import { BeheerWoning } from "./pages/BeheerWoning";
 import { Uitleg } from "./pages/Uitleg";
 import { clearToken, getToken } from "./lib/api";
+import { clearAllConcepten } from "./lib/concept";
 
 function App() {
   const ingelogd = getToken() !== null;
@@ -60,6 +61,9 @@ function App() {
                 color="inherit"
                 onClick={() => {
                   clearToken();
+                  // Op een gedeeld apparaat hoort een half ingevuld bod niet te
+                  // blijven staan voor de volgende gebruiker.
+                  clearAllConcepten();
                   window.location.reload();
                 }}
               >

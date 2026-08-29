@@ -140,10 +140,29 @@ deadline, hashketen-logboek, aantal-zichtbaar-regel, automatische verstrekking v
 biedlogboek bij een eindstatus, afhandeling buiten de procedure om met vastgelegde reden,
 en de losse verifier.
 
-Concepten worden bewust niet serverside bewaard. Zou de instantie een concept opslaan,
-dan weet zij vóór de deadline dat iemand een bod voorbereidt, precies de
-informatievoorsprong die dit project wil afschaffen. Een concept hoort dus in de browser
-van de bieder te blijven en komt daarom niet in het logboek.
+Een bod kan als concept bewaard worden, maar alleen in de browser van de bieder
+(`packages/web-demo/src/lib/concept.ts`). Dat een koper eerst nog wil bellen of een nacht
+wil slapen over zijn bedrag is normaal, en dan opnieuw beginnen is onnodig vervelend.
+Serverside bewaren kan echter niet: dan weet de instantie vóór de deadline dat iemand een
+bod voorbereidt en waarvoor, precies de informatievoorsprong die dit project wil
+afschaffen. Een concept is dus geen bod: het gaat nergens heen, komt niet in het logboek
+en telt nergens mee. De prijs daarvan, dat het weg is op een ander apparaat of na het
+wissen van browsergegevens, staat als zodanig op het scherm en niet in de kleine
+lettertjes. Uitloggen wist alle concepten, want een gedeeld apparaat hoort het halve bod
+van de vorige gebruiker niet te tonen.
+
+Wat de bieder vóór de deadline wél van de server krijgt, is zijn eigen ontvangstbewijs:
+`bidId`, tijdstip, `logIndex`, `prevHash`, `entryHash` en de handtekening van de
+instantie, met een knop om het te bewaren. Dat bewijs bindt via `prevHash` de hele
+voorgeschiedenis van de ketting vast, dus een kopie van het logboek-tot-nu-toe voegt daar
+cryptografisch niets aan toe, terwijl het wel het aantal biedingen en de biedtijdstippen
+vóór de sluitingstijd zou lekken, ook bij woningen waar de verkoper de aantal-zichtbaar-
+regel juist uit heeft gezet. Vandaar het ontvangstbewijs wel, de logboekkopie niet.
+
+Bewerkingsgeschiedenis en de tijd die iemand over het invullen deed, worden niet
+vastgelegd. Dat is gedragsobservatie van een consument die geen keus heeft of hij meedoet,
+het dient geen doel in deze procedure, en het zou dezelfde informatievoorsprong opleveren
+die dit project bestrijdt.
 
 Nog niet gebouwd (zie backlog, "Later"): white-label opmaak, publieke transparency-log
 (anchoring), pluggable iDIN-identiteit, certificering/trust-list, een tweede reskinbare

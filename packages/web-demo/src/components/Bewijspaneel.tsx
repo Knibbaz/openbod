@@ -56,6 +56,35 @@ export function Bewijspaneel({
     setChainCheck(await verifyHashChainInBrowser(logbook.log));
   }
 
+  /**
+   * Het ontvangstbewijs is alleen wat waard als de bieder het bewaart. Vóór de
+   * sluitingstijd staat het hier op het scherm, maar wie zijn browser leegt of
+   * van apparaat wisselt, houdt niets over waarmee hij later kan aantonen dat
+   * zijn bod erin zat. Vandaar deze knop, die nu al werkt en niet pas bij de
+   * uitslag. Het bestand voedt `openbod-verify receipt`.
+   */
+  function downloadOntvangstbewijs() {
+    if (!myBid) return;
+    const bewijs = {
+      bidId: myBid.bidId,
+      listingId: myBid.listingId,
+      commitment: myBid.commitment,
+      logIndex: myBid.logIndex,
+      prevHash: myBid.prevHash,
+      entryHash: myBid.entryHash,
+      timestamp: myBid.timestamp,
+      instanceSignature: myBid.instanceSignature,
+      dossierHash: listing.dossierHash,
+    };
+    const blob = new Blob([JSON.stringify(bewijs, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ontvangstbewijs-${myBid.bidId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function download() {
     if (!logbook) return;
     const blob = new Blob([JSON.stringify(logbook, null, 2)], { type: "application/json" });
@@ -116,8 +145,22 @@ export function Bewijspaneel({
                   <Rij kop="Vingerafdruk">
                     <code>{myBid.entryHash}</code>
                   </Rij>
+                  <Rij kop="Vorige regel">
+                    <code>{myBid.prevHash}</code>
+                  </Rij>
                 </TableBody>
               </Table>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ alignItems: "flex-start" }}>
+                <Button variant="outlined" startIcon={<DownloadIcon />} onClick={downloadOntvangstbewijs}>
+                  Bewaar mijn ontvangstbewijs
+                </Button>
+              </Stack>
+              <Typography variant="body2" color="text.secondary">
+                Bewaar dit nu, niet straks: deze website is de enige plek waar het staat, en jij bent de enige die het
+                later nodig heeft. Met het bestand plus het logboek toont{" "}
+                <code>openbod-verify receipt</code> aan dat jouw bod op dit tijdstip in de ketting is opgenomen, ook
+                als deze instantie dat later zou ontkennen.
+              </Typography>
             </Stack>
           )}
 

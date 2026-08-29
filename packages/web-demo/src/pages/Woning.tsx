@@ -23,6 +23,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import CheckCircleIcon from "@mui/icons-material/CheckCircleOutlined";
+import DraftIcon from "@mui/icons-material/EditNoteOutlined";
 import LockIcon from "@mui/icons-material/LockOutlined";
 import {
   coreApi,
@@ -40,6 +41,7 @@ import { Bewijspaneel } from "../components/Bewijspaneel";
 import { Fotogalerij } from "../components/Fotogalerij";
 import { Kenmerkenblok } from "../components/Kenmerkenblok";
 import { Sectie } from "../components/Sectie";
+import { clearConcept, loadConcept, saveConcept, type Concept } from "../lib/concept";
 import { StatusChip } from "../components/StatusChip";
 
 const VOORBEHOUD_LABELS: { type: Voorbehoud["type"]; label: string; uitleg: string }[] = [
@@ -123,6 +125,26 @@ export function Woning() {
   const [bidderContact, setBidderContact] = useState("");
   const [zojuistGeboden, setZojuistGeboden] = useState(false);
   const [formulierOpen, setFormulierOpen] = useState(false);
+  const [concept, setConcept] = useState<Concept | null>(null);
+  const [conceptTeruggezet, setConceptTeruggezet] = useState(false);
+
+  // Een bewaard concept terugzetten zodra de pagina opent, zodat je verder gaat
+  // waar je gebleven was in plaats van opnieuw te beginnen.
+  useEffect(() => {
+    if (!id) return;
+    const bewaard = loadConcept(id);
+    if (!bewaard) return;
+    setConcept(bewaard);
+    setAmount(bewaard.amount);
+    setMotivation(bewaard.motivation);
+    setHandoverDate(bewaard.handoverDate);
+    setValidUntil(bewaard.validUntil);
+    setConditions(bewaard.conditions);
+    setTakeover(bewaard.takeover as Record<string, TakeoverState>);
+    setBidderName(bewaard.bidderName);
+    setBidderContact(bewaard.bidderContact);
+    setConceptTeruggezet(true);
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -201,6 +223,31 @@ export function Woning() {
     };
   }
 
+  function onSaveConcept() {
+    if (!id) return;
+    setConcept(
+      saveConcept(id, {
+        amount,
+        motivation,
+        handoverDate,
+        validUntil,
+        conditions,
+        takeover,
+        bidderName,
+        bidderContact,
+      }),
+    );
+    setConceptTeruggezet(false);
+  }
+
+  function onClearConcept() {
+    if (!id) return;
+    if (!confirm("Je concept wissen? Wat je invulde is daarna weg.")) return;
+    clearConcept(id);
+    setConcept(null);
+    setConceptTeruggezet(false);
+  }
+
   async function onBid() {
     if (!id || !listing) return;
     if (!getToken()) {
@@ -244,6 +291,10 @@ export function Woning() {
         createdAt: myBid?.createdAt ?? res.timestamp,
         updatedAt: res.timestamp,
       });
+      // Het concept heeft zijn werk gedaan: er staat nu een echt bod.
+      clearConcept(id);
+      setConcept(null);
+      setConceptTeruggezet(false);
       setZojuistGeboden(true);
       setFormulierOpen(false);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -433,11 +484,38 @@ export function Woning() {
         </Sectie>
       )}
 
+      {magBieden && concept && !toonFormulier && (
+        <Sectie
+          titel="Je hebt een concept klaarstaan"
+          toelichting="Een concept is nog geen bod. Het staat alleen op dit apparaat, is nergens heen gestuurd en staat niet in het logboek. De verkoper en de makelaar weten niet dat het bestaat."
+        >
+          <Typography variant="body2" color="text.secondary">
+            Laatst bewaard op {new Date(concept.savedAt).toLocaleString("nl-NL")}
+            {concept.amount > 0 && <> · bedrag {euro(concept.amount)}</>}
+          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ alignItems: "flex-start" }}>
+            <Button variant="contained" onClick={() => setFormulierOpen(true)}>
+              Verder met mijn concept
+            </Button>
+            <Button color="error" variant="outlined" onClick={onClearConcept}>
+              Concept wissen
+            </Button>
+          </Stack>
+        </Sectie>
+      )}
+
       {toonFormulier && (
         <Sectie
           titel={myBid ? "Je bod aanpassen" : "Een bod uitbrengen"}
           toelichting="Je hele bod wordt op dit apparaat versleuteld voordat het wordt verstuurd. Deze website ontvangt alleen een onleesbaar pakket en kan het pas op de sluitingstijd openen, tegelijk met iedereen."
         >
+          {conceptTeruggezet && (
+            <Alert severity="info" icon={<DraftIcon fontSize="inherit" />} onClose={() => setConceptTeruggezet(false)}>
+              Je bewaarde concept van {new Date(concept!.savedAt).toLocaleString("nl-NL")} staat weer ingevuld. Er is
+              nog niets verstuurd.
+            </Alert>
+          )}
+
           {!getToken() && (
             <Alert severity="info">
               Je bent niet ingelogd.{" "}
@@ -601,12 +679,20 @@ export function Woning() {
             <Button variant="contained" size="large" startIcon={<LockIcon />} onClick={onBid} disabled={sealing}>
               {sealing ? "Versleutelen…" : myBid ? "Aangepast bod versturen" : "Bod versleuteld versturen"}
             </Button>
+            <Button variant="outlined" size="large" startIcon={<DraftIcon />} onClick={onSaveConcept} disabled={sealing}>
+              Bewaar als concept
+            </Button>
             {myBid && (
               <Button variant="text" onClick={() => setFormulierOpen(false)} disabled={sealing}>
                 Annuleren
               </Button>
             )}
           </Stack>
+          <Typography variant="body2" color="text.secondary">
+            Bewaren als concept verstuurt niets. Het blijft op dit apparaat, zodat je later verder kunt als je eerst
+            nog moet bellen of overleggen. Op een ander apparaat, of nadat je je browsergegevens wist, is het weg. Pas
+            als je het bod versleuteld verstuurt, telt het mee en komt het in het logboek.
+          </Typography>
         </Sectie>
       )}
 
