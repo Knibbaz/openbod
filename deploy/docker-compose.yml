@@ -24,10 +24,12 @@ services:
       IDENTITY_ISSUER: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}/api/identity
       IDENTITY_ALLOWED_ORIGINS: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}
       APP_BASE_URL: ${PUBLIC_URL:?ontbreekt in deploy/.env, zie deploy/.env.example}
-      # Deze instantie heeft geen mailserver. Zonder deze schakelaar kan
-      # niemand inloggen. Zie packages/identity/src/server.ts: alleen voor
-      # de publieke demo met verzonnen woningen, nooit voor echte biedingen.
-      IDENTITY_DEMO_MODE: "true"
+      # Demo-instantie: geen mailserver, dus de magic link wordt op het scherm
+      # getoond in plaats van gemaild. Zonder deze schakelaar kan op zo'n
+      # instantie niemand inloggen; mét deze schakelaar kan iedereen inloggen
+      # als elk e-mailadres. Staat daarom standaard uit: zet DEMO_INSTANCE=true
+      # in deploy/.env, en alleen op een instantie met verzonnen woningen.
+      IDENTITY_DEMO_MODE: "${DEMO_INSTANCE:-false}"
       # Gedeeld geheim voor de bezorgopdrachten die de core naar
       # /notify/logbook stuurt (E4-S3). Moet gelijk zijn aan dat van de core.
       DELIVERY_SHARED_SECRET: ${DELIVERY_SHARED_SECRET:?ontbreekt in deploy/.env, zie deploy/.env.example}
@@ -63,6 +65,10 @@ services:
       # terugvertalen. Zonder deze twee variabelen wordt er niets verstuurd.
       CORE_DELIVERY_ENDPOINT: http://identity:4001/notify/logbook
       DELIVERY_SHARED_SECRET: ${DELIVERY_SHARED_SECRET:?ontbreekt in deploy/.env, zie deploy/.env.example}
+      # Demo-instantie: vult zichzelf met een scenario en wist zichzelf elk half
+      # uur. Nooit aanzetten op een instantie met echte biedingen; die mag
+      # zichzelf niet wissen en haar core hoort nooit zelf te verzegelen.
+      CORE_DEMO: "${DEMO_INSTANCE:-false}"
       TRUST_PROXY: "true"
     depends_on:
       identity:

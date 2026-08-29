@@ -11,6 +11,13 @@ cp deploy/.env.example deploy/.env      # vul PUBLIC_URL in
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 ```
 
+Zet `DEMO_INSTANCE=true` in `deploy/.env` als dit een demonstratie is. Dan vult de
+core zichzelf met een scenario van vijf woningen in verschillende fasen en wist zij
+zichzelf elk half uur, en toont identity de magic link op het scherm in plaats van
+hem te mailen. Dat laatste betekent dat iedereen kan inloggen als elk e-mailadres,
+dus laat dit uit op een instantie waar echte biedingen binnenkomen; die heeft dan
+wel een mailserver nodig.
+
 De stack luistert standaard op `127.0.0.1:8080`. Zet er een reverse proxy met TLS
 voor (Caddy, Traefik, nginx, of wat je host aanbiedt) die naar die poort wijst, en
 laat `PUBLIC_URL` exact overeenkomen met de URL die de bezoeker in de balk ziet.
@@ -151,9 +158,14 @@ een sub bekend is.
 
 Deze staan ook in de UI, maar hier expliciet, want ze zijn geen bugs:
 
-- **Iedereen kan inloggen als elk e-mailadres.** Er is geen mailserver, dus
-  `IDENTITY_DEMO_MODE=true` toont de magic link direct in de response. Op een
+- **Iedereen kan inloggen als elk e-mailadres**, zolang `DEMO_INSTANCE=true` staat.
+  Er is geen mailserver, dus de magic link komt direct in de response. Op een
   instantie met echte biedingen moet deze schakelaar uit, en er een mailserver in.
+  Sinds deze schakelaar bestaat, staat hij standaard uit: een compose die je zonder
+  nadenken overneemt, zet geen open deur voor je klaar.
+- **De demo wist zichzelf**, ook met `DEMO_INSTANCE=true`. Elk half uur verdwijnt
+  alles wat er staat, inclusief biedingen van bezoekers. Dat staat in de UI, zodat
+  niemand zijn ontvangstbewijs kwijtraakt zonder gewaarschuwd te zijn.
 - **Alles staat in het geheugen.** `packages/core/src/store.ts` is een
   in-memory-referentie. Herstart je de container, dan zijn de woningen, biedingen
   en logboeken weg.
