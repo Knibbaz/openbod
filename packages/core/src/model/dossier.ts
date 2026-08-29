@@ -27,6 +27,7 @@ export interface Dossier {
   fotos: string[];
   omschrijving?: string;
   kenmerken?: Kenmerken;
+  externeLink?: string;
 }
 
 export function computeDossierHash(dossier: Dossier): string {

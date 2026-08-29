@@ -47,6 +47,36 @@ Testcases:
 - TC1: een gewijzigde huisstijl verschijnt op de webpagina en in de PDF.
 - TC2: een integriteitscheck van het logboek blijft identiek voor en na een opmaakwijziging.
 
+### E1-S4 Woninggegevens importeren uit open bronnen
+Als makelaar wil ik een adres kunnen opzoeken en de kenmerken automatisch ingevuld krijgen, zodat ik een woning in een minuut klaarzet in plaats van elk veld over te typen.
+
+Bron is bewust niet Funda maar open overheidsdata: de PDOK-locatieserver voor adressen, de BAG van het Kadaster voor bouwjaar, oppervlakte en gebruiksdoel, en EP-Online bij de RVO voor het energielabel. Die gegevens zijn vrij te gebruiken en door iedereen na te trekken, wat precies past bij een systeem dat niet op vertrouwen leunt. Vraagprijs, foto's en omschrijving blijven handwerk van de makelaar, want die zijn van hem.
+
+Uit te zoeken voordat dit gebouwd wordt: welke van deze bronnen zonder aangevraagde sleutel te gebruiken zijn. PDOK is vrij; over de BAG-bevraging en EP-Online moet dat nagekeken worden, en een sleutel hoort dan in de core te staan en niet in de browser.
+
+Acceptatiecriteria:
+- Een adres zoeken vult adres en kenmerken in het formulier, zonder ze vast te zetten: de makelaar kan alles corrigeren.
+- De herkomst van de ingevulde gegevens staat bij het veld, zodat niemand denkt dat het systeem het verzonnen heeft.
+
+Testcases:
+- TC1: een bestaand adres levert kenmerken die overeenkomen met de bron.
+- TC2: een onbekend adres of een bron die niet antwoordt, blokkeert het handmatig invullen niet.
+
+### E1-S5 Aanbod importeren dat de makelaar zelf mag aanleveren
+Als makelaar wil ik mijn bestaande aanbod importeren uit mijn eigen systeem, zodat ik niet dubbel werk doe om mee te draaien.
+
+De juiste route is een bestand of koppeling die de makelaar zelf aanlevert, want het is zijn eigen aanbod: een export uit zijn CRM, of een feed van zijn eigen website. Funda scrapen is geen route. Funda heeft geen open API voor derden; er is een Partner API (`partnerapi.funda.nl/feeds/Aanbod.svc/[key]/`) waarvoor Funda een sleutel uitgeeft en waarvan de documentatie niet publiek is, plus een XML-koppeling waarmee makelaars hun aanbod juist naar Funda sturen. Een makelaar die zijn eigen sleutel invult zou dus kunnen werken, mits de voorwaarden van Funda dat toestaan, en dat is een vraag aan Funda en niet aan de code. Zonder sleutel resteert scrapen, en dat botst met hun voorwaarden, met het databankenrecht en met het auteursrecht op foto's en teksten van de makelaar of de fotograaf.
+
+Dit loont pas als er een makelaar aan tafel zit die het echt wil gebruiken.
+
+Acceptatiecriteria:
+- Import via een aangeleverd bestand in een gedocumenteerd formaat werkt zonder dat de core partij-specifieke koppelingen kent.
+- Een geimporteerde woning is niet te onderscheiden van een handmatig aangemaakte, dossierhash inbegrepen.
+
+Testcases:
+- TC1: een importbestand levert woningen die de conformance-suite haalt.
+- TC2: een importbestand met ontbrekende verplichte velden faalt met een aanwijsbare regel, niet met een half aangemaakte woning.
+
 ## E2. Verzegeld bieden (commit)
 
 ### E2-S0 Lekcheck over de volledige toestand
@@ -211,6 +241,21 @@ Testcases:
 - TC1: met de instelling aan toont de pagina een correct aantal.
 - TC2 (beveiliging): met de instelling uit is het aantal niet opvraagbaar via de API.
 
+### E6-S3 Het logboek meelezen tijdens de biedfase
+Als bieder wil ik tijdens de inschrijving de logboekregels kunnen zien, zodat een makelaar mij niet aan de telefoon kan vertellen dat er nog vier hogere biedingen liggen.
+
+Dit is de zichtbaarheid uit E6-S2 doorgetrokken van een telling naar de regels zelf: tijdstip, pseudoniem en wat er gebeurde (bod geplaatst, aangepast, ingetrokken). Bedragen blijven eruit, want die zijn tot de sluitingstijd voor niemand leesbaar, ook niet voor de instantie. Het richt zich op de klacht uit het VEH-meldpunt dat kopers tegen elkaar worden uitgespeeld met biedingen waarvan later niet blijkt of ze bestonden.
+
+De keerzijde hoort in de afweging: biedritme is ook informatie. Wie ziet dat er in het laatste uur drie biedingen bijkomen, leidt daaruit af dat het druk is. Daarom instelbaar per woning, net als E6-S2, en niet standaard aan.
+
+Acceptatiecriteria:
+- Met de instelling aan tonen de regels tijdstip, type en pseudoniem, nooit bedragen of identiteiten.
+- De getoonde regels komen uit dezelfde hashketen als het eindlogboek en zijn dus achteraf narekenbaar.
+
+Testcases:
+- TC1: een bieder ziet dezelfde regels terug in het eindlogboek, op dezelfde plek in de keten.
+- TC2 (beveiliging): met de instelling uit levert het endpoint niets, ook niet voor een ingelogde bieder.
+
 ## E7. Gunning en afronding
 
 ### E7-S1 Biedingen bekijken en gunnen
@@ -274,6 +319,22 @@ Acceptatiecriteria (concept):
 - Een poging tot vroeg ontsleutelen en een poging tot openen van de identiteitsenvelop staan er zichtbaar als mislukt in.
 - De lekcheck over de volledige toestand hoort bij de uitvoer.
 
+## E11. Open bieden als tweede verkoopmethode
+
+### E11-S1 Openbaar bieden naar Noors voorbeeld
+Als verkoper wil ik kunnen kiezen voor openbaar bieden, waarbij het hoogste actuele bod voor iedereen zichtbaar is, zodat kopers niet blind hoeven te overbieden.
+
+Het protocol kan dit aan zonder zijn kern op te geven: `verkoopmethode` is al een veld, en bij open bieden vervalt alleen de timelock. De hashketen, de pseudoniemen, het narekenbare logboek en de automatische verstrekking blijven staan, en zijn hier harder nodig dan bij verzegeld bieden, want bij open bieden moet aantoonbaar zijn dat een getoond bod echt van een echte bieder kwam.
+
+Openstaande vragen voordat dit gebouwd kan worden:
+- Een bod van een consument is in Nederland niet bindend tot de akte getekend is, met daarna drie dagen bedenktijd. In Noorwegen is open bieden wettelijk ingebed met bindende biedingen en korte acceptatietermijnen. Zonder die binding kan een bod de prijs opdrijven en daarna verdwijnen, precies het nepbod dat verzegeld bieden onmogelijk maakt. Welke maatregel vervangt die binding hier?
+- Wat doet open bieden met de prijs in een markt met tekort? Dat is de eerste vraag die een kritische lezer bij het ministerie stelt, en het antwoord hoort onderbouwd te zijn en niet aangenomen.
+- Blijven de invarianten I1 tot en met I15 gelden, of krijgt open bieden een eigen set die aantoonbaar even sterk is op de punten die overblijven?
+
+Acceptatiecriteria (concept):
+- Verzegeld en open bieden draaien op dezelfde core, met dezelfde keten en hetzelfde logboek.
+- Bij open bieden is per bod aantoonbaar dat het van een geverifieerde bieder kwam en wanneer het binnenkwam.
+
 ## E9. Federatie en conformiteit
 
 ### E9-S1 Conformance-suite
@@ -317,7 +378,7 @@ Testcases:
 
 Minimale set om het verhaal te tonen en een subsidieaanvraag te onderbouwen: E1-S1, E1-S2, E2-S1, E2-S2, E3-S1, E3-S2, E4-S1, E4-S3, E5-S1, E6-S2, E7-S1, E7-S2, E8-S1.
 
-Later: E1-S3, E4-S2, E5-S2, E6-S1, E8-S2, E9, E10.
+Later: E1-S3, E1-S4, E1-S5, E4-S2, E5-S2, E6-S1, E6-S3, E8-S2, E9, E10, E11.
 
 ## Testsoorten
 

@@ -39,6 +39,26 @@ Zonder die variabelen waarschuwt de core alleen dat er niets verstuurd wordt. `I
 mag lokaal weg: dan maakt identity er zelf een aan, met een waarschuwing dat subjects bij elke herstart
 veranderen. In productie start identity zonder pepper bewust niet op.
 
+Wil je de instantie zichzelf laten vullen met een scenario, zet dan `CORE_DEMO=true`:
+
+```
+CORE_DEMO=true npm run dev --workspace packages/core
+```
+
+De demo-instantie zet vijf woningen neer die tegelijk in verschillende fasen staan, zodat
+een bezoeker niet hoeft te wachten om te zien wat er gebeurt: eentje waarop nog een half
+uur geboden kan worden, eentje die binnen enkele minuten sluit en voor je ogen onthult,
+eentje waarvan de uitslag al bekend is en waaraan gegund is, eentje die buiten de
+procedure om is afgehandeld, en eentje met strengere spelregels. Elk half uur wordt alles
+gewist en begint het scenario opnieuw. De frontend haalt dat op bij `GET /demo` en toont
+er een banner over, dus een echte instantie laat die mededeling vanzelf weg.
+
+De seeder in `packages/core/src/demo/scenario.ts` is de enige plek waar de core zelf
+biedingen verzegelt. In een echte instantie gebeurt dat uitsluitend in de browser van de
+bieder: zou de server het doen, dan kent zij de bedragen en is de hele garantie weg.
+Daarom laadt die module alleen bij `CORE_DEMO=true`, en wist een echte instantie zichzelf
+nooit.
+
 Open `http://localhost:5173`. Er is geen mailserver aangesloten: een "magic link"
 wordt getoond in de UI en gelogd door `identity`, in plaats van gemaild.
 

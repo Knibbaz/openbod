@@ -97,6 +97,11 @@ export const createListingBody = z.object({
   fotos: z.array(fotoUrlSchema).max(24).optional(),
   omschrijving: safeText(5_000).optional(),
   kenmerken: kenmerkenSchema.optional(),
+  // Pagina van de makelaar of aanbodsite. Zelfde https-eis als bij foto's: dit
+  // veld belandt in een href en is anders een injectiepad.
+  externeLink: fotoUrlSchema.optional(),
+  // Weglaten betekent meteen openstellen, zoals het altijd werkte.
+  publiceren: z.boolean().optional(),
 });
 
 /**
@@ -138,6 +143,7 @@ export const listingPublicResponse = z.object({
   fotos: z.array(z.string()),
   omschrijving: z.string().optional(),
   kenmerken: kenmerkenSchema.optional(),
+  externeLink: z.string().optional(),
   // Publiek, want zonder de hash zelf kan niemand narekenen dat het dossier
   // ongewijzigd is (I15).
   dossierHash: z.string(),

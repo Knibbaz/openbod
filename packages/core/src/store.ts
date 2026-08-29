@@ -33,6 +33,14 @@ export interface CreateListingInput {
   fotos?: string[];
   omschrijving?: string;
   kenmerken?: Kenmerken;
+  /** Pagina van de makelaar of aanbodsite waar dezelfde woning staat. */
+  externeLink?: string;
+  /**
+   * Meteen openstellen voor biedingen, of eerst als concept klaarzetten? Een
+   * makelaar wil een woning kunnen voorbereiden voordat de inschrijving loopt.
+   * Standaard true, zodat bestaande aanroepers niets merken.
+   */
+  publiceren?: boolean;
   /** JWK van de verkoper; bieders versleutelen hun identiteit hiernaartoe (I12). */
   sellerPublicKey?: string;
   /** Pseudonieme sub van de verkoper, zodat ook hij het logboek automatisch krijgt (E4-S3). */
@@ -81,8 +89,21 @@ export class OpenBodStore {
    */
   constructor(private readonly deliveryChannel: LogbookDelivery = new ConsoleLogbookDelivery()) {}
 
+  /**
+   * Alles wissen. Bestaat voor de demo-instantie, die zichzelf periodiek
+   * terugzet naar het beginscherm (`demo/scenario.ts`). De sleutel van de
+   * instantie blijft staan: die hoort bij de instantie en niet bij de inhoud,
+   * en een eerder gedownload logboek moet ook na een reset te verifieren zijn.
+   */
+  clear(): void {
+    this.listings.clear();
+  }
+
   createListing(input: CreateListingInput): Listing {
-    if (new Date(input.deadline).getTime() <= Date.now()) {
+    const publiceren = input.publiceren ?? true;
+    // Een concept mag een sluitingstijd hebben die nog niet klopt; die wordt
+    // pas bindend op het moment van publiceren.
+    if (publiceren && new Date(input.deadline).getTime() <= Date.now()) {
       throw new RuleViolationError("sluitingsdatum ligt in het verleden");
     }
     const id = randomUUID();
@@ -98,6 +119,7 @@ export class OpenBodStore {
       fotos: input.fotos ?? [],
       omschrijving: input.omschrijving,
       kenmerken: input.kenmerken,
+      externeLink: input.externeLink,
     });
     const listing: Listing = {
       id,
@@ -111,18 +133,47 @@ export class OpenBodStore {
       fotos: input.fotos ?? [],
       omschrijving: input.omschrijving,
       kenmerken: input.kenmerken,
+      externeLink: input.externeLink,
       dossierHash,
-      status: "biedfase",
+      status: publiceren ? "biedfase" : "aangemaakt",
       createdAt: new Date().toISOString(),
       sellerPublicKey: input.sellerPublicKey,
       sellerSub: input.sellerSub,
     };
     const chain = new HashChain();
-    // De dossierhash gaat mee de keten in. Daarmee ligt vast waarop er geboden
-    // werd, niet alleen dát er geboden werd (I15).
-    chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline, dossierHash })));
+    // De keten begint pas als de inschrijving opengaat. Een concept is nog geen
+    // procedure: er valt niets aan te tonen zolang niemand kon bieden, en de
+    // dossierhash hoort te horen bij wat er bij het openen op het scherm stond.
+    if (publiceren) {
+      // De dossierhash gaat mee de keten in. Daarmee ligt vast waarop er geboden
+      // werd, niet alleen dát er geboden werd (I15).
+      chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline, dossierHash })));
+    }
     this.listings.set(id, { listing, chain, bids: new Map() });
     return listing;
+  }
+
+  /**
+   * Een voorbereide woning openstellen voor biedingen. Dit is het moment waarop
+   * de keten begint en de spelregels bindend worden, dus de sluitingstijd moet
+   * nu wel in de toekomst liggen.
+   */
+  publishListing(listingId: string): Listing {
+    const rec = this.record(listingId);
+    if (rec.listing.status !== "aangemaakt") {
+      throw new InvalidTransitionError(`kan niet publiceren vanuit status ${rec.listing.status}`);
+    }
+    if (new Date(rec.listing.deadline).getTime() <= Date.now()) {
+      throw new RuleViolationError("sluitingsdatum ligt in het verleden");
+    }
+    rec.listing.status = "biedfase";
+    rec.chain.append(
+      "listing_opened",
+      sha256Hex(
+        canonicalize({ id: rec.listing.id, deadline: rec.listing.deadline, dossierHash: rec.listing.dossierHash }),
+      ),
+    );
+    return rec.listing;
   }
 
   getListing(id: string): Listing {

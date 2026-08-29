@@ -15,11 +15,13 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/AddOutlined";
+import ListIcon from "@mui/icons-material/ChecklistOutlined";
 import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import KeyIcon from "@mui/icons-material/VpnKeyOutlined";
 import { coreApi, type Energielabel, type OvernameStatus } from "../lib/api";
 import { generateSellerKeypair, saveSellerKey } from "../lib/identity-envelope";
 import { Fotogalerij } from "../components/Fotogalerij";
+import { STANDAARDZAKEN, alleStandaardzaken } from "../lib/standaardzaken";
 import { Sectie } from "../components/Sectie";
 
 const STATUS_OPTIONS: { value: OvernameStatus; label: string }[] = [
@@ -73,6 +75,7 @@ export function BeheerNieuw() {
   const [verkoopmethode, setVerkoopmethode] = useState<(typeof VERKOOPMETHODEN)[number]["value"]>("inschrijving");
   const [sluiting, setSluiting] = useState(standaardSluiting);
   const [omschrijving, setOmschrijving] = useState("");
+  const [externeLink, setExterneLink] = useState("");
 
   const [woonoppervlak, setWoonoppervlak] = useState("");
   const [perceeloppervlak, setPerceel] = useState("");
@@ -100,10 +103,21 @@ export function BeheerNieuw() {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
-  async function onSubmit(e: FormEvent) {
+  /** Zet de standaardlijst neer, zonder weg te gooien wat er al staat. */
+  function vulStandaardlijst() {
+    const bestaand = new Set(items.map((i) => i.label.trim().toLowerCase()).filter(Boolean));
+    const nieuw = alleStandaardzaken()
+      .filter((z) => !bestaand.has(z.label.toLowerCase()))
+      .map((z) => ({ label: z.label, status: z.status, amount: "" }));
+    setItems((prev) => [...prev, ...nieuw]);
+  }
+
+  async function onSubmit(e: FormEvent, publiceren = true) {
     e.preventDefault();
     const deadlineMs = new Date(sluiting).getTime();
-    if (!Number.isFinite(deadlineMs) || deadlineMs <= Date.now()) {
+    // Een concept mag een sluitingstijd hebben die nog moet worden bijgesteld;
+    // bij publiceren wordt hij bindend en moet hij kloppen.
+    if (!Number.isFinite(deadlineMs) || (publiceren && deadlineMs <= Date.now())) {
       setError("Kies een sluitingstijd die in de toekomst ligt.");
       return;
     }
@@ -141,6 +155,8 @@ export function BeheerNieuw() {
         omschrijving: omschrijving.trim() || undefined,
         kenmerken: Object.values(kenmerken).some((v) => v !== undefined) ? kenmerken : undefined,
         sellerPublicKey: publicJwk,
+        externeLink: externeLink.trim() || undefined,
+        publiceren,
       });
       saveSellerKey(listing.id, privateJwk);
       navigate(`/beheer/${listing.id}`);
@@ -152,7 +168,7 @@ export function BeheerNieuw() {
   }
 
   return (
-    <Stack component="form" onSubmit={onSubmit} spacing={3}>
+    <Stack component="form" onSubmit={(e: FormEvent) => onSubmit(e, true)} spacing={3}>
       <Typography variant="h1">Woning klaarzetten</Typography>
 
       <Alert severity="info" icon={<KeyIcon fontSize="inherit" />}>
@@ -215,6 +231,13 @@ export function BeheerNieuw() {
             value={omschrijving}
             onChange={(e) => setOmschrijving(e.target.value)}
             placeholder="Wat moet een koper over deze woning weten?"
+          />
+          <TextField
+            label="Link naar deze woning elders (optioneel)"
+            value={externeLink}
+            onChange={(e) => setExterneLink(e.target.value)}
+            placeholder="https://www.makelaardijvoorbeeld.nl/aanbod/straatnaam-1"
+            helperText="De pagina van je eigen website of een aanbodsite waar dezelfde woning staat, met de brochure en de foto's. Bieders kunnen daar de woning bekijken. De link telt mee in de vastlegging."
           />
         </Stack>
       </Sectie>
@@ -312,14 +335,19 @@ export function BeheerNieuw() {
         titel="Roerende zaken"
         toelichting="Wat blijft achter en wat kan de koper overnemen? De bieder kiest hier per item, en die keuze zit mee in het verzegelde bod."
         actie={
-          <Button
-            type="button"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => setItems((prev) => [...prev, { ...EMPTY_ITEM }])}
-          >
-            Item
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button type="button" size="small" startIcon={<ListIcon />} onClick={vulStandaardlijst}>
+              Standaardlijst
+            </Button>
+            <Button
+              type="button"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setItems((prev) => [...prev, { ...EMPTY_ITEM }])}
+            >
+              Item
+            </Button>
+          </Stack>
         }
       >
         <Stack spacing={1.5}>
@@ -370,7 +398,10 @@ export function BeheerNieuw() {
           ))}
           {items.length === 0 && (
             <Typography variant="body2" color="text.secondary">
-              Nog geen roerende zaken opgegeven.
+              Nog geen roerende zaken opgegeven. Met <strong>Standaardlijst</strong> zet je de gebruikelijke lijst
+              neer ({alleStandaardzaken().length} zaken in {STANDAARDZAKEN.length} rubrieken), met per zaak een voor
+              de hand liggende keuze die je daarna aanpast. Wat je weglaat, staat nergens vast, en daar ontstaat
+              later de discussie over.
             </Typography>
           )}
         </Stack>
@@ -378,11 +409,24 @@ export function BeheerNieuw() {
 
       {error && <Alert severity="error">{error}</Alert>}
 
-      <Box>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ alignItems: "flex-start" }}>
         <Button type="submit" variant="contained" size="large" disabled={submitting}>
-          {submitting ? "Sleutel maken en klaarzetten…" : "Woning klaarzetten"}
+          {submitting ? "Sleutel maken en klaarzetten…" : "Openstellen voor biedingen"}
         </Button>
-      </Box>
+        <Button
+          type="button"
+          variant="outlined"
+          size="large"
+          disabled={submitting}
+          onClick={(e) => void onSubmit(e as unknown as FormEvent, false)}
+        >
+          Opslaan als concept
+        </Button>
+      </Stack>
+      <Typography variant="body2" color="text.secondary">
+        Een concept staat niet in de publieke lijst en er kan niet op geboden worden. Het logboek begint pas als je de
+        woning openstelt: dát is het moment waarop de spelregels en de woninggegevens vastliggen.
+      </Typography>
     </Stack>
   );
 }

@@ -90,6 +90,16 @@ export function BeheerWoning() {
   }, [id]);
 
   /** Gunnen aan één bod, en pas dán de identiteit van die bieder openen. */
+  async function onPublish() {
+    if (!id) return;
+    setError(null);
+    try {
+      setListing(await coreApi.publishListing(id));
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   async function onAward(bidId: string) {
     if (!id || !listing) return;
     const entry = logbook?.entries.find((e) => e.bidId === bidId);
@@ -185,6 +195,21 @@ export function BeheerWoning() {
           browser van de verkoper is achtergebleven. Dat is precies wat voorkomt dat deze website zelf bij de
           identiteit van bieders kan.
         </Alert>
+      )}
+
+      {listing.status === "aangemaakt" && (
+        <Sectie
+          titel="Nog een concept"
+          toelichting="Deze woning staat niet in de publieke lijst en er kan niet op geboden worden. Zolang je hem niet openstelt, ligt er ook nog niets vast: het logboek begint op het moment van openstellen, met de woninggegevens en de spelregels zoals ze dan zijn."
+        >
+          <Typography variant="body2" color="text.secondary">
+            Sluitingstijd zoals hij nu staat: {new Date(listing.deadline).toLocaleString("nl-NL")}. Controleer die
+            voordat je openstelt, want daarna staat hij vast.
+          </Typography>
+          <Button variant="contained" onClick={onPublish} sx={{ alignSelf: "flex-start" }}>
+            Openstellen voor biedingen
+          </Button>
+        </Sectie>
       )}
 
       {listing.status === "biedfase" && (

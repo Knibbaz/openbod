@@ -10,6 +10,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import InputAdornment from "@mui/material/InputAdornment";
+import MuiLink from "@mui/material/Link";
 import LinearProgress from "@mui/material/LinearProgress";
 import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
@@ -497,9 +498,20 @@ export function Woning() {
         </Alert>
       )}
 
-      {listing.omschrijving && (
+      {(listing.omschrijving || listing.externeLink) && (
         <Sectie titel="Over deze woning">
-          <Typography sx={{ whiteSpace: "pre-line", maxWidth: "70ch" }}>{listing.omschrijving}</Typography>
+          {listing.omschrijving && (
+            <Typography sx={{ whiteSpace: "pre-line", maxWidth: "70ch" }}>{listing.omschrijving}</Typography>
+          )}
+          {listing.externeLink && (
+            <Typography variant="body2">
+              Deze woning staat ook op{" "}
+              <MuiLink href={listing.externeLink} target="_blank" rel="noopener noreferrer">
+                de pagina van de verkopende partij
+              </MuiLink>
+              , met de brochure en meer foto's. Die pagina hoort bij het dossier waarop je biedt.
+            </Typography>
+          )}
         </Sectie>
       )}
 

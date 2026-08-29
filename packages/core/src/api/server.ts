@@ -11,6 +11,7 @@ import {
 } from "../store.js";
 import { ConsoleLogbookDelivery, HttpLogbookDelivery, type LogbookDelivery } from "../logbook/delivery.js";
 import { verifyIdentityToken } from "./identity.js";
+import { demoStatus, startDemo } from "../demo/scenario.js";
 import {
   abortBody,
   awardBody,
@@ -31,6 +32,12 @@ import {
 
 const PORT = Number(process.env.CORE_PORT ?? 4000);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+/**
+ * Demo-instantie: zet zichzelf elk half uur terug en vult zichzelf met een
+ * scenario. Staat standaard uit, want een instantie die echte biedingen draagt
+ * mag zichzelf nooit wissen en haar core hoort nooit zelf te verzegelen.
+ */
+const DEMO_MODE = process.env.CORE_DEMO === "true";
 
 // Standaard alleen de lokale demo-frontend. In productie moet dit expliciet
 // naar het echte domein van de deployment wijzen: geen wildcard-CORS voor
@@ -131,9 +138,21 @@ app.post(
 );
 
 app.get("/listings", async (_req, reply) => {
-  const listings = store.allListings().map((listing) => publicListingView(listing.id));
+  // Een woning die nog niet gepubliceerd is, hoort niet in de publieke lijst:
+  // de makelaar is hem aan het voorbereiden en er valt nog niet op te bieden.
+  const listings = store
+    .allListings()
+    .filter((listing) => listing.status !== "aangemaakt")
+    .map((listing) => publicListingView(listing.id));
   return sendValidated(reply, listingListResponse, listings);
 });
+
+/**
+ * Draait deze instantie als demo? De frontend gebruikt dit om te tonen dat de
+ * gegevens verzonnen zijn en wanneer alles wordt teruggezet. Een echte instantie
+ * antwoordt hier `actief: false`, en dan verdwijnt die hele mededeling.
+ */
+app.get("/demo", async () => (DEMO_MODE ? demoStatus() : { actief: false }));
 
 app.get("/listings/:id", async (req, reply) => {
   const params = parseParamsOr400(listingIdParams, req.params, reply);
@@ -246,6 +265,28 @@ app.post(
     try {
       await requireIdentity(req);
       return sendValidated(reply, awardResponse, store.awardListing(params.id, parsed.data.bidId));
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+/**
+ * Een voorbereide woning openstellen voor biedingen. Vanaf hier begint de keten
+ * en liggen de spelregels vast.
+ *
+ * Zelfde MVP-beperking als bij `/award`: dit endpoint controleert dát je
+ * ingelogd bent, niet dát je de verkoper of diens makelaar bent.
+ */
+app.post(
+  "/listings/:id/publish",
+  { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    try {
+      await requireIdentity(req);
+      return sendValidated(reply, listingPublicResponse, store.publishListing(params.id));
     } catch (err) {
       return handleDomainError(err, reply);
     }
@@ -393,6 +434,15 @@ setInterval(() => {
 
 async function tick() {
   for (const listing of store.allListings()) {
+    // De lus houdt een momentopname vast en doet er met await's tijd over. In
+    // demo-modus kan de instantie zichzelf ondertussen terugzetten, en dan
+    // bestaat deze woning niet meer. Dat is geen fout maar een race, en zeker
+    // geen reden om de hele instantie te laten crashen.
+    try {
+      store.getListing(listing.id);
+    } catch {
+      continue;
+    }
     if (listing.status === "biedfase" && new Date(listing.deadline).getTime() <= Date.now()) {
       store.closeListing(listing.id);
     }
@@ -416,6 +466,11 @@ async function tick() {
       }
     }
   }
+}
+
+if (DEMO_MODE) {
+  console.log("[core] DEMO-modus: de instantie vult zichzelf en wist zichzelf elk half uur.");
+  startDemo(store);
 }
 
 if (IS_PRODUCTION && ALLOWED_ORIGINS.includes("http://localhost:5173") && ALLOWED_ORIGINS.length === 1) {

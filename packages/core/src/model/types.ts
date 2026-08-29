@@ -95,6 +95,14 @@ export interface Listing {
   omschrijving?: string;
   kenmerken?: Kenmerken;
   /**
+   * Verwijzing naar de plek waar deze woning ook staat: de pagina van de
+   * makelaar of een aanbodsite. Handig voor een bieder die de foto's en de
+   * brochure daar wil bekijken, en het maakt zichtbaar dat dezelfde woning op
+   * twee plekken staat. Telt mee in de dossierhash, want het hoort bij wat er
+   * getoond werd.
+   */
+  externeLink?: string;
+  /**
    * Hash van alles wat aan bieders is getoond: kenmerken, omschrijving, foto's,
    * prijsvorm, roerende zaken en de spelregels. Zit ook in de `listing_opened`-
    * logregel, dus onwrikbaar vastgelegd op het moment van openen.

@@ -50,6 +50,8 @@ export interface Listing {
   fotos: string[];
   omschrijving?: string;
   kenmerken?: Kenmerken;
+  /** Pagina van de makelaar of aanbodsite waar dezelfde woning staat. */
+  externeLink?: string;
   /** Hash van alles wat aan bieders getoond werd; zelf na te rekenen (I15). */
   dossierHash: string;
 }
@@ -159,7 +161,20 @@ export const identityApi = {
   },
 };
 
+/** Antwoord van /demo: draait deze instantie als demonstratie, en tot wanneer? */
+export type DemoStatus =
+  | { actief: false }
+  | { actief: true; gestartOp: string; resetOp: string; cyclusMinuten: number };
+
 export const coreApi = {
+  async getDemoStatus(): Promise<DemoStatus> {
+    try {
+      return await json<DemoStatus>(await fetch(`${CORE_URL}/demo`));
+    } catch {
+      // Een oudere instantie kent dit endpoint niet; dan is het gewoon geen demo.
+      return { actief: false };
+    }
+  },
   async listListings() {
     return json<Listing[]>(await fetch(`${CORE_URL}/listings`));
   },
@@ -235,8 +250,19 @@ export const coreApi = {
   },
   /** De woningen waarvan deze browser de verkopersleutel heeft. */
   async listMine(ids: string[]) {
-    const all = await this.listListings();
-    return all.filter((l) => ids.includes(l.id));
+    // Per id ophalen in plaats van de publieke lijst filteren: een woning die
+    // nog niet gepubliceerd is staat niet in die lijst, en juist die moet de
+    // makelaar hier zien staan.
+    const opgehaald = await Promise.all(
+      ids.map((id) => this.getListing(id).catch(() => null)),
+    );
+    return opgehaald.filter((l): l is Listing => l !== null);
+  },
+  /** Een voorbereide woning openstellen voor biedingen. */
+  async publishListing(id: string) {
+    return json<Listing>(
+      await fetch(`${CORE_URL}/listings/${id}/publish`, { method: "POST", headers: authHeaders() }),
+    );
   },
   /** null zolang het logboek nog niet verstuurd is; 404 is hier een normaal antwoord. */
   async getDelivery(listingId: string): Promise<Delivery | null> {

@@ -17,6 +17,7 @@ import { BeheerWoning } from "./pages/BeheerWoning";
 import { Uitleg } from "./pages/Uitleg";
 import { clearToken, getToken } from "./lib/api";
 import { clearAllConcepten } from "./lib/concept";
+import { Demobanner } from "./components/Demobanner";
 
 function App() {
   const ingelogd = getToken() !== null;
@@ -78,6 +79,8 @@ function App() {
         </Container>
         <Divider />
       </AppBar>
+
+      <Demobanner />
 
       <Container maxWidth="md" component="main" sx={{ flex: 1, py: { xs: 3, sm: 5 } }}>
         <Routes>
