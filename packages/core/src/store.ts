@@ -80,14 +80,24 @@ interface ListingRecord {
  */
 export class OpenBodStore {
   private listings = new Map<string, ListingRecord>();
-  readonly keypair = new InstanceKeypair();
+  readonly keypair: InstanceKeypair;
 
   /**
    * Het kanaal waarlangs het biedlogboek automatisch naar alle betrokkenen gaat
    * (E4-S3). Standaard een luide no-op, zodat een verkeerd geconfigureerde
    * instantie zichtbaar niets verstuurt in plaats van stil te falen.
    */
-  constructor(private readonly deliveryChannel: LogbookDelivery = new ConsoleLogbookDelivery()) {}
+  constructor(
+    private readonly deliveryChannel: LogbookDelivery = new ConsoleLogbookDelivery(),
+    /**
+     * De sleutel waarmee deze instantie ondertekent. Meegeven zodat een
+     * deployment een vaste sleutel kan laden: zonder dat is een gedownload
+     * logboek na een herstart niet meer te verifieren.
+     */
+    keypair: InstanceKeypair = new InstanceKeypair(),
+  ) {
+    this.keypair = keypair;
+  }
 
   /**
    * Alles wissen. Bestaat voor de demo-instantie, die zichzelf periodiek

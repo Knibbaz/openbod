@@ -1,11 +1,18 @@
 # Eén publieke demo-instantie. Drie containers, één poort naar buiten.
 #
-#   cp deploy/.env.example deploy/.env   # en vul PUBLIC_URL en de twee geheimen in
-#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#   cp deploy/.env.example deploy/.env   # en vul PUBLIC_URL en de geheimen in
+#
+# Bijwerken kan op twee manieren, en beide werken met dit bestand:
+#
+#   docker compose ... pull && docker compose ... up -d      # gepubliceerde images
+#   git pull && docker compose ... up -d --build             # zelf bouwen
 #
 # Let op: --build, niet --force-recreate. Dat laatste maakt nieuwe containers van
 # de image die er al ligt en bouwt niets opnieuw, dus dan krijg je de oude
-# frontend terug terwijl alles er goed uitziet.
+# frontend terug terwijl alles er goed uitziet. En zonder `pull` blijft een
+# oudere `latest` die al op de machine staat gewoon draaien.
+#
+# Let ook op wat een herstart wist: er is geen database. Zie deploy/README.md.
 #
 # Zet hier een reverse proxy met TLS voor (Caddy, Traefik, of wat je host
 # aanbiedt) en laat die naar poort 8080 wijzen.
@@ -14,6 +21,7 @@ name: openbod-demo
 
 services:
   identity:
+    image: ${OPENBOD_API_IMAGE:-basabbink/openbod-api}:${OPENBOD_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -36,6 +44,9 @@ services:
       # Zonder pepper is een pseudonieme sub terug te rekenen uit een adres.
       # De backend weigert in productie te starten als deze ontbreekt.
       IDENTITY_SUBJECT_PEPPER: ${IDENTITY_SUBJECT_PEPPER:?ontbreekt in deploy/.env, zie deploy/.env.example}
+      # Vaste ondertekensleutel voor inlogtokens. Zonder deze is iedereen na een
+      # herstart uitgelogd, want de core controleert tokens tegen de JWKS.
+      IDENTITY_SIGNING_JWK: ${IDENTITY_SIGNING_JWK:-}
       TRUST_PROXY: "true"
     restart: unless-stopped
     expose:
@@ -48,6 +59,7 @@ services:
       start_period: 5s
 
   core:
+    image: ${OPENBOD_API_IMAGE:-basabbink/openbod-api}:${OPENBOD_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
@@ -69,6 +81,10 @@ services:
       # uur. Nooit aanzetten op een instantie met echte biedingen; die mag
       # zichzelf niet wissen en haar core hoort nooit zelf te verzegelen.
       CORE_DEMO: "${DEMO_INSTANCE:-false}"
+      # Vaste ondertekensleutel van de instantie. Zonder deze hoort een gisteren
+      # gedownload logboek bij een sleutel die na een herstart niet meer bestaat,
+      # en faalt de verificatie van een logboek dat gewoon echt is.
+      CORE_SIGNING_KEY: ${CORE_SIGNING_KEY:-}
       TRUST_PROXY: "true"
     depends_on:
       identity:
@@ -78,6 +94,7 @@ services:
       - "4000"
 
   web:
+    image: ${OPENBOD_WEB_IMAGE:-basabbink/openbod-web}:${OPENBOD_TAG:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web

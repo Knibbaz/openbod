@@ -1,0 +1,81 @@
+# Bouwt en publiceert de images waarmee een instantie draait.
+#
+# Waarom dit bestaat: op een VPS bouwen kost geheugen en tijd, en een build die
+# daar halverwege omvalt laat een instantie achter die niet meer klopt met de
+# code. Bouwen gebeurt hier, één keer, en de VPS haalt het resultaat op.
+#
+# Eenmalig instellen in de repo (Settings, Secrets and variables, Actions):
+#   DOCKERHUB_USERNAME  je Docker Hub-gebruikersnaam
+#   DOCKERHUB_TOKEN     een access token uit Docker Hub, niet je wachtwoord
+name: Images publiceren
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # De verificatietests praten met het publieke drand-netwerk. Dat is met
+      # opzet: ze bewijzen dat een bod niet vóór de deadline te openen is, en
+      # dat bewijs is niets waard tegen een nagebootst netwerk.
+      - run: npm test
+
+  publiceren:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - naam: api
+            dockerfile: deploy/Dockerfile.api
+          - naam: web
+            dockerfile: deploy/Dockerfile.web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/openbod-${{ matrix.naam }}
+          # latest voor "de laatste werkende versie", sha en versietag om te
+          # kunnen pinnen en terug te rollen. Zonder die twee is terugvallen na
+          # een slechte deploy raden welke image er eerst stond.
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          # linux/amd64 dekt vrijwel elke VPS. Draait je host op ARM (een
+          # Raspberry Pi, of een arm-instance), voeg dan linux/arm64 toe; dat
+          # kost wel flink meer bouwtijd door emulatie.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

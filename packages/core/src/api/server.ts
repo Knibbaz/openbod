@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
+import { InstanceKeypair } from "../log/signing.js";
 import {
   OpenBodStore,
   ListingNotFoundError,
@@ -73,7 +74,31 @@ function buildDeliveryChannel(): LogbookDelivery {
   return new HttpLogbookDelivery(endpoint, secret);
 }
 
-export const store = new OpenBodStore(buildDeliveryChannel());
+/**
+ * De ondertekensleutel van deze instantie. Zonder `CORE_SIGNING_KEY` maakt de
+ * core er een per start, en dan is een logboek dat gisteren gedownload is
+ * vandaag niet meer te verifieren: de handtekening hoort dan bij een sleutel
+ * die niet meer bestaat. Voor een instantie die blijft staan is dat geen
+ * detail maar het verschil tussen bewijs en een bewering.
+ *
+ * Maak er een met:
+ *   openssl genpkey -algorithm ed25519
+ */
+function buildKeypair(): InstanceKeypair {
+  const pem = process.env.CORE_SIGNING_KEY;
+  if (!pem?.trim()) {
+    if (IS_PRODUCTION) {
+      console.warn(
+        "[core] WAARSCHUWING: CORE_SIGNING_KEY ontbreekt. Er is een tijdelijke sleutel gemaakt, " +
+          "dus eerder verstrekte logboeken en ontvangstbewijzen zijn na deze herstart niet meer te verifieren.",
+      );
+    }
+    return new InstanceKeypair();
+  }
+  return new InstanceKeypair(pem);
+}
+
+export const store = new OpenBodStore(buildDeliveryChannel(), buildKeypair());
 
 const app = Fastify({
   logger: false,
