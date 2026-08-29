@@ -42,6 +42,7 @@ import { Bewijspaneel } from "../components/Bewijspaneel";
 import { Fotogalerij } from "../components/Fotogalerij";
 import { Kenmerkenblok } from "../components/Kenmerkenblok";
 import { Sectie } from "../components/Sectie";
+import { isVeiligeContext } from "../components/Onveiligebanner";
 import { clearConcept, loadConcept, saveConcept, type Concept } from "../lib/concept";
 import { StatusChip } from "../components/StatusChip";
 
@@ -299,6 +300,13 @@ export function Woning() {
 
   async function onBid() {
     if (!id || !listing) return;
+    if (!isVeiligeContext()) {
+      setError(
+        "Je bod kan hier niet versleuteld worden: deze pagina draait niet over https, en dan geeft je browser zijn " +
+          "cryptografie niet vrij. Een onversleuteld bod versturen doen we niet.",
+      );
+      return;
+    }
     if (!getToken()) {
       setError("Log eerst in. Dat is nodig zodat één persoon niet twintig biedingen kan doen.");
       return;
@@ -829,7 +837,13 @@ export function Woning() {
           )}
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <Button variant="contained" size="large" startIcon={<LockIcon />} onClick={onBid} disabled={sealing}>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<LockIcon />}
+              onClick={onBid}
+              disabled={sealing || !isVeiligeContext()}
+            >
               {sealing ? "Versleutelen…" : myBid ? "Aangepast bod versturen" : "Bod versleuteld versturen"}
             </Button>
             <Button variant="outlined" size="large" startIcon={<DraftIcon />} onClick={onSaveConcept} disabled={sealing}>

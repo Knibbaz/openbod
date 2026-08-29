@@ -18,6 +18,7 @@ import { Uitleg } from "./pages/Uitleg";
 import { clearToken, getToken } from "./lib/api";
 import { clearAllConcepten } from "./lib/concept";
 import { Demobanner } from "./components/Demobanner";
+import { Onveiligebanner } from "./components/Onveiligebanner";
 
 function App() {
   const ingelogd = getToken() !== null;
@@ -80,6 +81,7 @@ function App() {
         <Divider />
       </AppBar>
 
+      <Onveiligebanner />
       <Demobanner />
 
       <Container maxWidth="md" component="main" sx={{ flex: 1, py: { xs: 3, sm: 5 } }}>

@@ -28,6 +28,54 @@ Lokaal uitproberen kan zonder proxy:
 PUBLIC_URL=http://localhost:8080 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
+## Achter een Caddy die er al staat
+
+Draait er al een Caddy-container voor andere sites, dan hoeft die van jou niets
+te weten van poorten: zet hem op hetzelfde Docker-netwerk en verwijs naar de
+containernaam.
+
+```
+# eenmalig: de bestaande Caddy toegang geven tot het netwerk van deze stack
+docker network connect openbod-demo_default caddy
+```
+
+En in het Caddyfile:
+
+```
+openbod.example.nl {
+    reverse_proxy openbod-demo-web-1:8080
+}
+```
+
+Let op het ontbreken van `http://` voor de hostnaam. Schrijf je dat er wel bij,
+dan regelt Caddy geen certificaat en is de site alleen over http bereikbaar, en
+**dan werkt het bieden niet**. Alles wat dit systeem belooft gebeurt in de
+browser van de bieder: verzegelen, de identiteit versleutelen naar de verkoper,
+de hashketen narekenen. Dat loopt via Web Crypto, en browsers geven `crypto.subtle`
+alleen vrij op https of localhost. Op http bestaat die functionaliteit niet, en
+dan is dit een website die woningen laat zien en verder niets. De frontend zegt
+dat zelf ook, met een rode balk bovenaan, in plaats van pas te struikelen als
+iemand een bod probeert uit te brengen.
+
+Zet daarna in `deploy/.env`:
+
+```
+PUBLIC_URL=https://openbod.example.nl
+DEMO_INSTANCE=true
+```
+
+`PUBLIC_URL` moet exact de URL zijn die de bezoeker in de balk ziet, https en al:
+hij is tegelijk de CORS-origin, de JWT-issuer en de basis van de magic link.
+Wijkt hij af, dan weigert de core elk token en kan niemand bieden. Zonder
+`DEMO_INSTANCE=true` kan op een demo-instantie niemand inloggen, want er is geen
+mailserver om de magic link te versturen.
+
+De poortmapping (`BIND_ADDRESS`, `PUBLIC_PORT`) mag blijven staan maar is dan
+overbodig: het verkeer loopt over het Docker-netwerk en niet over de host. Zet
+`BIND_ADDRESS` in elk geval nooit op `0.0.0.0` als er een proxy voor staat, want
+dan is de instantie ook rechtstreeks over http bereikbaar, langs je certificaat
+heen.
+
 ## Bijwerken: images ophalen of zelf bouwen
 
 Beide werken met dezelfde `docker-compose.yml`. Op een VPS zou ik het eerste doen.
