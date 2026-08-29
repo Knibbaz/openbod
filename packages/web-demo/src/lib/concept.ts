@@ -26,6 +26,13 @@ export interface Concept {
   takeover: Record<string, { choice: string; amount: string }>;
   bidderName: string;
   bidderContact: string;
+  /**
+   * Optioneel tijdstip waarop dit concept zichzelf als bod verstuurt. De
+   * planning leeft in dit tabblad en nergens anders: de server kent hem niet en
+   * kan hem dus ook niet uitvoeren. Staat de browser dicht op dat moment, dan
+   * gebeurt er niets, en dat moet de bieder weten voordat hij erop vertrouwt.
+   */
+  scheduledAt?: string;
   savedAt: string;
 }
 

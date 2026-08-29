@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import Alert from "@mui/material/Alert";
 import AlertTitle from "@mui/material/AlertTitle";
@@ -92,6 +92,15 @@ function isoToDate(value?: string): string {
   return value ? new Date(value).toLocaleDateString("nl-NL") : "-";
 }
 
+/** "3 uur en 12 minuten", voor de aftelling naar een geplande verzending. */
+function resterend(ms: number): string {
+  const minuten = Math.max(0, Math.round(ms / 60_000));
+  const uren = Math.floor(minuten / 60);
+  const rest = minuten % 60;
+  if (uren === 0) return `${rest} ${rest === 1 ? "minuut" : "minuten"}`;
+  return `${uren} uur en ${rest} ${rest === 1 ? "minuut" : "minuten"}`;
+}
+
 function euro(bedrag: number): string {
   return `€ ${bedrag.toLocaleString("nl-NL")}`;
 }
@@ -127,6 +136,13 @@ export function Woning() {
   const [formulierOpen, setFormulierOpen] = useState(false);
   const [concept, setConcept] = useState<Concept | null>(null);
   const [conceptTeruggezet, setConceptTeruggezet] = useState(false);
+  /** Minuten vóór de sluitingstijd waarop dit tabblad het bod zelf verstuurt; 0 is niet plannen. */
+  const [planMinuten, setPlanMinuten] = useState(0);
+  const [geplandOp, setGeplandOp] = useState<string | null>(null);
+  const [planningGemist, setPlanningGemist] = useState(false);
+  const [nu, setNu] = useState(() => Date.now());
+  /** Voorkomt dat de geplande verzending bij elke seconde-tik opnieuw afgaat. */
+  const geplandVerstuurd = useRef(false);
 
   // Een bewaard concept terugzetten zodra de pagina opent, zodat je verder gaat
   // waar je gebleven was in plaats van opnieuw te beginnen.
@@ -144,6 +160,12 @@ export function Woning() {
     setBidderName(bewaard.bidderName);
     setBidderContact(bewaard.bidderContact);
     setConceptTeruggezet(true);
+    if (bewaard.scheduledAt) {
+      setGeplandOp(bewaard.scheduledAt);
+      // Verstreken terwijl dit tabblad dicht was: dan is er niets verstuurd, en
+      // dat mag de bieder niet zelf hoeven ontdekken.
+      if (new Date(bewaard.scheduledAt).getTime() <= Date.now()) setPlanningGemist(true);
+    }
   }, [id]);
 
   useEffect(() => {
@@ -176,6 +198,21 @@ export function Woning() {
       clearInterval(interval);
     };
   }, [id]);
+
+  // De keuzelijst weer laten kloppen met een bewaarde planning. Zonder dit staat
+  // hij op "niet plannen" en zou opnieuw bewaren de planning stil weggooien.
+  useEffect(() => {
+    if (!listing || !geplandOp) return;
+    const minuten = Math.round((new Date(listing.deadline).getTime() - new Date(geplandOp).getTime()) / 60_000);
+    setPlanMinuten((huidig) => (huidig === 0 ? minuten : huidig));
+  }, [listing, geplandOp]);
+
+  // Eén seconde-tik voedt zowel de aftelling als het moment van versturen.
+  useEffect(() => {
+    if (!geplandOp) return;
+    const t = setInterval(() => setNu(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [geplandOp]);
 
   function conditionState(type: string): VoorbehoudState {
     return conditions[type] ?? { selected: false, deadline: "", note: "" };
@@ -224,7 +261,13 @@ export function Woning() {
   }
 
   function onSaveConcept() {
-    if (!id) return;
+    if (!id || !listing) return;
+    const gepland = new Date(new Date(listing.deadline).getTime() - planMinuten * 60_000);
+    if (planMinuten > 0 && gepland.getTime() <= Date.now()) {
+      setError("Dat moment is al voorbij. Kies een tijdstip dat nog komt, of verstuur je bod nu.");
+      return;
+    }
+    const plan = planMinuten > 0 ? gepland.toISOString() : undefined;
     setConcept(
       saveConcept(id, {
         amount,
@@ -235,8 +278,11 @@ export function Woning() {
         takeover,
         bidderName,
         bidderContact,
+        scheduledAt: plan,
       }),
     );
+    setGeplandOp(plan ?? null);
+    setPlanningGemist(false);
     setConceptTeruggezet(false);
   }
 
@@ -245,6 +291,8 @@ export function Woning() {
     if (!confirm("Je concept wissen? Wat je invulde is daarna weg.")) return;
     clearConcept(id);
     setConcept(null);
+    setGeplandOp(null);
+    setPlanningGemist(false);
     setConceptTeruggezet(false);
   }
 
@@ -294,6 +342,8 @@ export function Woning() {
       // Het concept heeft zijn werk gedaan: er staat nu een echt bod.
       clearConcept(id);
       setConcept(null);
+      setGeplandOp(null);
+      setPlanningGemist(false);
       setConceptTeruggezet(false);
       setZojuistGeboden(true);
       setFormulierOpen(false);
@@ -304,6 +354,28 @@ export function Woning() {
       setSealing(false);
     }
   }
+
+  /**
+   * De geplande verzending. Die draait hier in het tabblad van de bieder en niet
+   * op de server: de instantie hoort niet te weten dat er een bod klaarligt. De
+   * keerzijde is dat een gesloten laptop betekent dat er niets verstuurt, en dat
+   * staat er daarom met zoveel woorden bij op het scherm.
+   */
+  useEffect(() => {
+    if (!geplandOp || !id || !listing) return;
+    if (listing.status !== "biedfase") return;
+    if (geplandVerstuurd.current || planningGemist || sealing) return;
+    if (nu < new Date(geplandOp).getTime()) return;
+    if (!getToken()) {
+      setError("Je geplande bod kon niet worden verstuurd: je bent niet meer ingelogd.");
+      return;
+    }
+    geplandVerstuurd.current = true;
+    void onBid();
+    // onBid is bewust geen dependency: hij verandert elke render mee met het
+    // formulier, en dit effect hoort alleen op de klok te reageren.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nu, geplandOp, id, listing, planningGemist, sealing]);
 
   async function onWithdraw() {
     if (!id || !myBid) return;
@@ -484,6 +556,38 @@ export function Woning() {
         </Sectie>
       )}
 
+      {magBieden && planningGemist && (
+        <Alert
+          severity="warning"
+          action={
+            <Button color="inherit" size="small" onClick={() => setFormulierOpen(true)}>
+              Nu versturen
+            </Button>
+          }
+        >
+          <AlertTitle>Je geplande bod is niet verstuurd</AlertTitle>
+          <Typography variant="body2">
+            Het tijdstip dat je koos is voorbijgegaan terwijl deze pagina niet openstond. Er is dus niets verstuurd.
+            De inschrijving loopt nog, dus je kunt het alsnog doen.
+          </Typography>
+        </Alert>
+      )}
+
+      {magBieden && geplandOp && !planningGemist && nu < new Date(geplandOp).getTime() && (
+        <Alert severity="info" icon={<DraftIcon fontSize="inherit" />}>
+          <AlertTitle>Je bod staat klaar om over {resterend(new Date(geplandOp).getTime() - nu)} te versturen</AlertTitle>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Gepland op {new Date(geplandOp).toLocaleString("nl-NL")}. Dat gebeurt vanaf dit apparaat, in dit tabblad.
+          </Typography>
+          <Typography variant="body2">
+            <strong>Laat deze pagina daarvoor openstaan en dit apparaat aan.</strong> Sluit je de browser, valt je
+            internet weg of gaat je laptop dicht, dan wordt er niets verstuurd en doe je niet mee. Wil je die
+            afhankelijkheid niet, verstuur dan gewoon nu: niemand kan je bod vóór de sluitingstijd lezen, en
+            aanpassen mag daarna nog steeds.
+          </Typography>
+        </Alert>
+      )}
+
       {magBieden && concept && !toonFormulier && (
         <Sectie
           titel="Je hebt een concept klaarstaan"
@@ -493,6 +597,12 @@ export function Woning() {
             Laatst bewaard op {new Date(concept.savedAt).toLocaleString("nl-NL")}
             {concept.amount > 0 && <> · bedrag {euro(concept.amount)}</>}
           </Typography>
+          {concept.scheduledAt && !planningGemist && (
+            <Typography variant="body2" color="text.secondary">
+              Gepland om vanuit dit tabblad te versturen op {new Date(concept.scheduledAt).toLocaleString("nl-NL")}.
+              Laat deze pagina daarvoor openstaan.
+            </Typography>
+          )}
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ alignItems: "flex-start" }}>
             <Button variant="contained" onClick={() => setFormulierOpen(true)}>
               Verder met mijn concept
@@ -674,6 +784,37 @@ export function Woning() {
               helperText="Alleen de verkoper leest dit. Andere bieders zien het niet en het komt niet in het openbare logboek."
             />
           </Stack>
+
+          <Divider textAlign="left">
+            <Typography variant="overline">Wanneer versturen</Typography>
+          </Divider>
+          <Typography variant="body2" color="text.secondary">
+            Nu versturen kost je niets: je bod is onleesbaar tot de sluitingstijd, ook voor de makelaar en voor deze
+            website, en je krijgt meteen je ontvangstbewijs. Wil je toch pas op het laatste moment meedoen, dan kun je
+            het versturen laten plannen.
+          </Typography>
+          <TextField
+            select
+            label="Automatisch versturen"
+            value={planMinuten}
+            onChange={(e) => setPlanMinuten(Number(e.target.value))}
+            helperText="Bewaar daarna je concept, anders is de planning niet vastgelegd."
+            sx={{ maxWidth: 360 }}
+          >
+            <MenuItem value={0}>Niet plannen, ik verstuur zelf</MenuItem>
+            <MenuItem value={60}>Een uur voor de sluitingstijd</MenuItem>
+            <MenuItem value={30}>Een half uur voor de sluitingstijd</MenuItem>
+            <MenuItem value={10}>Tien minuten voor de sluitingstijd</MenuItem>
+            <MenuItem value={5}>Vijf minuten voor de sluitingstijd</MenuItem>
+          </TextField>
+          {planMinuten > 0 && (
+            <Alert severity="warning">
+              Een geplande verzending draait in dit tabblad, niet op de server. Dat is met opzet: zou deze website je
+              bod vast bewaren, dan weet zij vóór de sluitingstijd dat jij meedoet, en zou je bovendien tot dat moment
+              geen ontvangstbewijs hebben om op terug te vallen. De prijs is dat het alleen werkt zolang deze pagina
+              openstaat op een apparaat dat aan staat en online is. Lukt dat niet zeker, verstuur dan nu.
+            </Alert>
+          )}
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
             <Button variant="contained" size="large" startIcon={<LockIcon />} onClick={onBid} disabled={sealing}>

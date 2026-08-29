@@ -151,6 +151,16 @@ wissen van browsergegevens, staat als zodanig op het scherm en niet in de kleine
 lettertjes. Uitloggen wist alle concepten, want een gedeeld apparaat hoort het halve bod
 van de vorige gebruiker niet te tonen.
 
+Een concept kan zichzelf ook op een gekozen moment versturen, standaard vijf tot zestig
+minuten voor de sluitingstijd. Die timer draait in het tabblad van de bieder, om dezelfde
+reden als het concept zelf: een instantie die het bod alvast in bewaring neemt, weet vóór
+de sluitingstijd dat deze bieder meedoet, en de bieder zou tot het geplande moment geen
+ontvangstbewijs hebben om op terug te vallen als het bod nooit verstuurd wordt. De prijs
+is dat een gesloten laptop betekent dat er niets gebeurt. Dat staat als waarschuwing bij
+de keuze, in de aftelling en achteraf: is het moment verstreken terwijl de pagina dicht
+was, dan meldt de biedpagina bij het openen dat er niets verstuurd is en biedt het aan het
+alsnog te doen. De verzending gebeurt nooit stilzwijgend achteraf.
+
 Wat de bieder vóór de deadline wél van de server krijgt, is zijn eigen ontvangstbewijs:
 `bidId`, tijdstip, `logIndex`, `prevHash`, `entryHash` en de handtekening van de
 instantie, met een knop om het te bewaren. Dat bewijs bindt via `prevHash` de hele
