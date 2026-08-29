@@ -78,7 +78,7 @@ export function CreateListing() {
       <h1>Woning aanmaken</h1>
       <p>
         Bij het aanmaken genereert je browser een sleutelpaar. Bieders versleutelen hun naam daarnaartoe, zodat deze
-        server en de makelaar nooit zien wie er biedt. Pas als je gunt, kun jij die naam openen — met de sleutel die in
+        server en de makelaar nooit zien wie er biedt. Pas als je gunt, kun jij die naam openen, met de sleutel die in
         deze browser blijft. Raak je die kwijt, dan blijft de naam onleesbaar.
       </p>
       <form onSubmit={onSubmit}>
@@ -91,7 +91,7 @@ export function CreateListing() {
           <input type="number" value={askingPrice} onChange={(e) => setAskingPrice(Number(e.target.value))} required />
         </label>
         <label>
-          Sluit over (minuten) — kort voor de demo, drand quicknet-ronde is 3s
+          Sluit over (minuten), kort voor de demo, drand quicknet-ronde is 3s
           <input
             type="number"
             min={1}

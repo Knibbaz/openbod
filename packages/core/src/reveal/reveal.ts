@@ -17,7 +17,7 @@ const looseEnvelopeSchema = z.object({ payload: z.unknown(), salt: z.string().mi
  * opgeslagen commitment (protocol.md §5, invariant I2), en valideert daarna
  * de payload zelf tegen het schema. De payload komt van de bieder (via de
  * ciphertext) en wordt dus behandeld als onvertrouwde input, ook al klopt de
- * commitment — een geldige handtekening/hash bewijst alleen integriteit,
+ * commitment: een geldige handtekening/hash bewijst alleen integriteit,
  * niet dat de inhoud zinnig of begrensd is (OWASP: valideer bij elke
  * vertrouwensgrens, ook na decryptie). Niets wordt stilzwijgend weggelaten,
  * altijd een expliciete invalid-markering (I5, I6).

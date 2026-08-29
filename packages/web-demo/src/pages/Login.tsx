@@ -42,7 +42,7 @@ export function Login() {
       <h1>Inloggen via magic link</h1>
       <p>
         Demo-vereenvoudiging: er is geen mailserver aangesloten, dus de link wordt in dev-modus hieronder getoond in
-        plaats van gemaild (protocol.md §7 — magic link nu, iDIN later, zonder de core te wijzigen). In productie
+        plaats van gemaild (protocol.md §7: magic link nu, iDIN later, zonder de core te wijzigen). In productie
         toont de API deze link nooit rechtstreeks.
       </p>
       <form onSubmit={requestLink}>

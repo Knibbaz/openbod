@@ -4,7 +4,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
 import { SignJWT } from "jose";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, timingSafeEqual } from "node:crypto";
 import { loadKeys } from "./keys.js";
 
 /**
@@ -31,7 +31,7 @@ const APP_BASE_URL = (process.env.APP_BASE_URL ?? "http://localhost:5173").repla
 // Alleen buiten productie de magic-link-token rechtstreeks teruggeven i.p.v.
 // mailen: er is in de demo geen mailserver aangesloten. In productie MOET
 // dit uitstaan, anders kan iedereen inloggen als elk e-mailadres zonder er
-// toegang toe te hebben — dat ondermijnt de hele identiteitscontrole.
+// toegang toe te hebben, en dat ondermijnt de hele identiteitscontrole.
 //
 // IDENTITY_DEMO_MODE zet dit bewust weer aan voor de publieke demo-instantie.
 // Die heeft geen mailserver, dus zonder deze schakelaar kan niemand inloggen.
@@ -44,6 +44,22 @@ const ALLOWED_ORIGINS = (process.env.IDENTITY_ALLOWED_ORIGINS ?? "http://localho
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
+
+/**
+ * Sub naar e-mailadres. De core kent alleen pseudonieme subjects en hoort geen
+ * adressen te kennen (ARCHITECTURE.md §5); deze backend is de enige plek waar
+ * de koppeling bestaat. Nodig om het biedlogboek automatisch te kunnen
+ * verstrekken (E4-S3) zonder de scheiding op te geven.
+ *
+ * In-memory, net als de rest van de MVP: een herstart maakt bezorging aan
+ * eerdere deelnemers onmogelijk tot zij opnieuw inloggen. Een productie-
+ * instantie zet hier een persistente store neer.
+ */
+const knownSubjects = new Map<string, string>();
+
+// Gedeeld geheim tussen core en identity. Zonder dit zou /notify/logbook een
+// orakel zijn waarmee iedereen kan uitvragen of een sub bekend is.
+const DELIVERY_SHARED_SECRET = process.env.DELIVERY_SHARED_SECRET ?? "";
 
 const pendingLinks = new Map<string, PendingLink>();
 const keys = await loadKeys();
@@ -106,6 +122,7 @@ app.post(
     pending.used = true;
 
     const sub = createHash("sha256").update(pending.email).digest("hex");
+    knownSubjects.set(sub, pending.email);
     const jwt = await new SignJWT({ assurance_level: "email" })
       .setProtectedHeader({ alg: "ES256", kid: keys.kid })
       .setIssuer(ISSUER)
@@ -118,6 +135,80 @@ app.post(
     return { accessToken: jwt };
   },
 );
+
+/**
+ * E4-S3: bezorgopdracht vanuit de core. De core stuurt pseudonieme subjects en
+ * het ondertekende logboek; deze backend vertaalt de subjects naar adressen en
+ * verstuurt. De core leert daarbij nooit naar welke adressen het ging, en deze
+ * backend leert niets over de biedingen wat niet al in het openbare logboek staat.
+ *
+ * Dit is de kern van de klacht die dit oplost: sinds 2023 is het biedlogboek
+ * verplicht, maar in de praktijk moesten kopers erom vragen en kreeg ongeveer
+ * een derde het. Hier is verstrekken geen handeling van de makelaar meer.
+ */
+app.post(
+  "/notify/logbook",
+  {
+    // Een volledig biedlogboek is fors groter dan een loginverzoek: het bevat de
+    // hele hashketen. De globale 16 KB-limiet van deze backend zou het weigeren.
+    bodyLimit: 2 * 1024 * 1024,
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+  },
+  async (req, reply) => {
+    if (!DELIVERY_SHARED_SECRET) {
+      return reply.status(503).send({ error: "bezorging is op deze instantie niet geconfigureerd" });
+    }
+    const provided = req.headers["x-delivery-secret"];
+    if (typeof provided !== "string" || !secretMatches(provided)) {
+      return reply.status(401).send({ error: "ongeldig bezorggeheim" });
+    }
+    const body = z
+      .object({
+        listingId: z.string().uuid(),
+        recipients: z.array(z.string().regex(/^[0-9a-f]{64}$/)).max(1000),
+        logbook: z.record(z.unknown()),
+      })
+      .safeParse(req.body);
+    if (!body.success) {
+      return reply.status(400).send({ error: "ongeldige bezorgopdracht" });
+    }
+
+    let delivered = 0;
+    let unknown = 0;
+    for (const sub of body.data.recipients) {
+      const email = knownSubjects.get(sub);
+      if (!email) {
+        unknown += 1;
+        continue;
+      }
+      sendLogbookMail(email, body.data.listingId, body.data.logbook);
+      delivered += 1;
+    }
+    // Bewust géén lijst van welke subs onbekend waren: dat zou het endpoint
+    // alsnog tot een uitvraagorakel maken voor wie het geheim ooit te pakken krijgt.
+    return { delivered, unknown };
+  },
+);
+
+function secretMatches(provided: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(DELIVERY_SHARED_SECRET);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Demo-vereenvoudiging, net als bij de magic link: er is geen mailserver
+ * aangesloten, dus dit schrijft naar de console. Een productie-instantie hangt
+ * hier een echte mailer aan; het logboek gaat als bijlage mee, want de
+ * ontvanger moet het onafhankelijk kunnen narekenen met de verifier.
+ */
+function sendLogbookMail(email: string, listingId: string, logbook: Record<string, unknown>) {
+  const rootHash = typeof logbook.rootHash === "string" ? logbook.rootHash : "onbekend";
+  console.log(
+    `[identity] biedlogboek van listing ${listingId} (root ${rootHash.slice(0, 12)}...) ` +
+      `naar ${email}. DEMO: niet echt gemaild, geen mailserver geconfigureerd.`,
+  );
+}
 
 setInterval(() => {
   const now = Date.now();

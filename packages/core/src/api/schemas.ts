@@ -30,9 +30,16 @@ export const sealedBidBody = z
     ciphertext: ciphertextSchema,
     identityEnvelope: identityEnvelopeSchema.optional(),
   })
-  .strict(); // weigert onbekende velden zoals "amount" — geen plaintext mag meekomen (I1)
+  .strict(); // weigert onbekende velden zoals "amount": geen plaintext mag meekomen (I1)
 
 export const awardBody = z.object({ bidId: uuidSchema }).strict();
+
+/**
+ * Afhandeling buiten de procedure om (E7-S2). De reden is verplicht en komt
+ * onverkort in het openbare logboek, dus zij is een procedurele verklaring,
+ * geen plek voor persoonsgegevens over bieders.
+ */
+export const abortBody = z.object({ reason: safeText(500, 3) }).strict();
 
 export const createListingBody = z.object({
   address: safeText(200, 3),
@@ -57,6 +64,9 @@ export const createListingBody = z.object({
   // JWK van de verkoper. De bijbehorende private sleutel blijft bij de verkoper;
   // die hoort hier nooit binnen te komen (protocol.md §5a).
   sellerPublicKey: z.string().min(1).max(2_000).optional(),
+  // Pseudonieme sub van de verkoper (sha256-hex, zelfde vorm als bidderSub),
+  // zodat het logboek straks ook naar hem gaat en niet alleen naar de bieders.
+  sellerSub: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 
 /**
@@ -88,11 +98,13 @@ export const listingPublicResponse = z.object({
     aantalBiedingenZichtbaar: z.boolean(),
   }),
   takeoverItems: z.array(takeoverItemPublic),
-  status: z.enum(["aangemaakt", "biedfase", "gesloten", "onthuld", "onherroepelijk"]),
+  status: z.enum(["aangemaakt", "biedfase", "gesloten", "onthuld", "onherroepelijk", "buiten_procedure"]),
   createdAt: z.string(),
   bidCount: z.number().int().nonnegative().optional(),
   sellerPublicKey: z.string().optional(),
   awardedBidId: uuidSchema.optional(),
+  buitenProcedureReden: z.string().optional(),
+  buitenProcedureAt: z.string().optional(),
 });
 
 export const listingListResponse = z.array(listingPublicResponse);
@@ -120,6 +132,8 @@ const logEntryResponse = z.object({
     "bid_revealed",
     "gegund",
     "identiteit_vrijgegeven",
+    "buiten_procedure_afgehandeld",
+    "logboek_verstuurd",
   ]),
   payloadHash: z.string(),
   prevHash: z.string(),
@@ -133,6 +147,10 @@ export const logbookResponse = z.object({
     prijsVorm: z.enum(["vraagprijs", "richtprijs", "bieden_vanaf"]),
     verkoopmethode: z.enum(["inschrijving", "onderhandeling", "bieden_met_deadline"]),
     deadline: z.string(),
+    status: z.enum(["aangemaakt", "biedfase", "gesloten", "onthuld", "onherroepelijk", "buiten_procedure"]),
+    buitenProcedureReden: z.string().optional(),
+    buitenProcedureAt: z.string().optional(),
+    awardedBidId: uuidSchema.optional(),
   }),
   entries: z.array(
     z.object({
@@ -190,4 +208,12 @@ export const myBidResponse = z.object({
   version: z.number().int().positive(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+/** Wat een instantie teruggeeft over de automatische verstrekking van het logboek (E4-S3). */
+export const deliveryResponse = z.object({
+  listingId: uuidSchema,
+  recipientRefs: z.array(z.string()),
+  deliveredAt: z.string(),
+  logIndex: z.number().int().nonnegative(),
 });

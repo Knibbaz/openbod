@@ -6,11 +6,18 @@ export { drandClient, roundForDeadline, encryptToDeadline, decryptCiphertext } f
 export { HashChain, GENESIS_HASH } from "./log/hashchain.js";
 export { InstanceKeypair, verifyWithPublicKeyPem } from "./log/signing.js";
 export { revealBid } from "./reveal/reveal.js";
-export { generatePublicLogbook, type Logbook, type PublicLogbookEntry } from "./logbook/logbook.js";
+export { generatePublicLogbook, bidderRef, type Logbook, type PublicLogbookEntry } from "./logbook/logbook.js";
+export {
+  ConsoleLogbookDelivery,
+  HttpLogbookDelivery,
+  type LogbookDelivery,
+  type DeliveryRequest,
+} from "./logbook/delivery.js";
 export {
   OpenBodStore,
   ListingNotFoundError,
   InvalidTransitionError,
   RuleViolationError,
   type CreateListingInput,
+  type DeliveryResult,
 } from "./store.js";

@@ -9,12 +9,15 @@ import {
   InvalidTransitionError,
   RuleViolationError,
 } from "../store.js";
+import { ConsoleLogbookDelivery, HttpLogbookDelivery, type LogbookDelivery } from "../logbook/delivery.js";
 import { verifyIdentityToken } from "./identity.js";
 import {
+  abortBody,
   awardBody,
   awardResponse,
   bidParams,
   createListingBody,
+  deliveryResponse,
   instanceKeyResponse,
   listingIdParams,
   listingListResponse,
@@ -30,14 +33,35 @@ const PORT = Number(process.env.CORE_PORT ?? 4000);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 // Standaard alleen de lokale demo-frontend. In productie moet dit expliciet
-// naar het echte domein van de deployment wijzen — geen wildcard-CORS voor
+// naar het echte domein van de deployment wijzen: geen wildcard-CORS voor
 // een API die met een bearer-token authenticeert.
 const ALLOWED_ORIGINS = (process.env.CORE_ALLOWED_ORIGINS ?? "http://localhost:5173")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
 
-export const store = new OpenBodStore();
+/**
+ * Bezorgkanaal voor het biedlogboek (E4-S3). De core kent geen e-mailadressen;
+ * alleen de identity-backend kan een pseudonieme sub terugvertalen naar een
+ * adres. Zonder configuratie valt dit terug op een luide no-op, zodat een
+ * instantie die het logboek feitelijk niet verstrekt dat ook laat merken.
+ */
+function buildDeliveryChannel(): LogbookDelivery {
+  const endpoint = process.env.CORE_DELIVERY_ENDPOINT;
+  const secret = process.env.DELIVERY_SHARED_SECRET;
+  if (!endpoint || !secret) {
+    if (IS_PRODUCTION) {
+      console.warn(
+        "[core] WAARSCHUWING: CORE_DELIVERY_ENDPOINT of DELIVERY_SHARED_SECRET ontbreekt. " +
+          "Biedlogboeken worden NIET automatisch verstrekt (E4-S3).",
+      );
+    }
+    return new ConsoleLogbookDelivery();
+  }
+  return new HttpLogbookDelivery(endpoint, secret);
+}
+
+export const store = new OpenBodStore(buildDeliveryChannel());
 
 const app = Fastify({
   logger: false,
@@ -60,7 +84,7 @@ await app.register(rateLimit, {
 /**
  * Elke response gaat door zijn zod-schema vóórdat hij verstuurd wordt.
  * `.parse` strip onbekende velden en gooit als een verplicht veld ontbreekt
- * of het verkeerde type heeft — dus een programmeerfout die per ongeluk een
+ * of het verkeerde type heeft, dus een programmeerfout die per ongeluk een
  * intern veld (zoals `bidderSub`) zou lekken, faalt hard in plaats van
  * stilletjes de deur uit te gaan.
  */
@@ -202,7 +226,7 @@ app.post(
 );
 
 /**
- * Gunning. Geeft alleen de identiteitsenvelop van het gekozen bod terug — een
+ * Gunning. Geeft alleen de identiteitsenvelop van het gekozen bod terug: een
  * blob die deze server niet kan openen, want de sleutel ligt bij de verkoper.
  *
  * Bekende beperking van de MVP: er is nog geen verkopersrol, dus dit endpoint
@@ -227,6 +251,51 @@ app.post(
     }
   },
 );
+
+/**
+ * E7-S2: de procedure is buiten dit systeem om afgehandeld (ingetrokken,
+ * onderhands verkocht, teruggetrokken van de markt). Dit dwingt een eindstatus
+ * met opgegeven reden af en zet de automatische verstrekking van het logboek in
+ * gang, zodat bieders van een afgebroken inschrijving niet in het ongewisse
+ * blijven, een van de klachten uit het VEH-meldpunt.
+ *
+ * Zelfde MVP-beperking als bij `/award`: dit endpoint controleert dát je
+ * ingelogd bent, niet dát je de verkoper of diens makelaar bent.
+ */
+app.post(
+  "/listings/:id/abort",
+  { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    const parsed = abortBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      await requireIdentity(req);
+      return sendValidated(reply, logbookResponse, store.abortListing(params.id, parsed.data.reason));
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+/**
+ * Bewijs dat het logboek daadwerkelijk automatisch is verstuurd, met alleen
+ * pseudonieme refs. Publiek opvraagbaar: juist een bieder die beweert niets te
+ * hebben gekregen moet kunnen laten zien wat de instantie hierover claimt, en
+ * de bijbehorende `logboek_verstuurd`-regel staat in de keten (I14).
+ */
+app.get("/listings/:id/delivery", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    const delivery = store.logbookDelivery(params.id);
+    if (!delivery) return reply.status(404).send({ error: "logboek is nog niet verstuurd" });
+    return sendValidated(reply, deliveryResponse, delivery);
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
 
 app.get("/listings/:id/my-bid", async (req, reply) => {
   const params = parseParamsOr400(listingIdParams, req.params, reply);
@@ -311,15 +380,18 @@ app.setErrorHandler((err: FastifyError, _req, reply) => {
 });
 
 /**
- * E3-S1: automatische onthulling op de deadline, zonder actie van bieders.
- * Een productie-instantie doet dit met een betrouwbare scheduler/queue;
- * voor de MVP-demo volstaat een korte polling-lus.
+ * E3-S1 en E4-S3: automatische onthulling op de deadline en automatische
+ * verstrekking van het logboek zodra de procedure een eindstatus bereikt,
+ * beide zonder dat een bieder ergens om hoeft te vragen. Een productie-instantie
+ * doet dit met een betrouwbare scheduler/queue; voor de MVP-demo volstaat een
+ * korte polling-lus. Beide store-methodes zijn idempotent, dus herhaald
+ * aanroepen levert geen dubbele logregels op.
  */
 setInterval(() => {
-  void autoCloseAndReveal();
+  void tick();
 }, 2000);
 
-async function autoCloseAndReveal() {
+async function tick() {
   for (const listing of store.allListings()) {
     if (listing.status === "biedfase" && new Date(listing.deadline).getTime() <= Date.now()) {
       store.closeListing(listing.id);
@@ -330,6 +402,17 @@ async function autoCloseAndReveal() {
         console.log(`[core] listing ${listing.id} automatisch onthuld`);
       } catch (err) {
         console.error(`[core] onthulling van ${listing.id} mislukt, probeer opnieuw`, err);
+      }
+    }
+    const isEindstatus = listing.status === "onherroepelijk" || listing.status === "buiten_procedure";
+    if (isEindstatus && !store.logbookDelivery(listing.id)) {
+      try {
+        const delivery = await store.deliverLogbook(listing.id);
+        console.log(
+          `[core] biedlogboek van ${listing.id} verstuurd naar ${delivery.recipientRefs.length} betrokkene(n)`,
+        );
+      } catch (err) {
+        console.error(`[core] versturen van logboek ${listing.id} mislukt, probeer opnieuw`, err);
       }
     }
   }

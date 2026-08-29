@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import {
   coreApi,
   getToken,
+  type Delivery,
   type Listing,
   type Logbook,
   type MyBid,
@@ -49,7 +50,7 @@ function dateToIso(value: string): string | undefined {
 }
 
 function isoToDate(value?: string): string {
-  return value ? value.slice(0, 10) : "—";
+  return value ? value.slice(0, 10) : "-";
 }
 
 interface VoorbehoudState {
@@ -81,6 +82,9 @@ export function ListingDetail() {
   const [bidderContact, setBidderContact] = useState("");
   const [awardedIdentity, setAwardedIdentity] = useState<BidderIdentity | null>(null);
   const [awarding, setAwarding] = useState(false);
+  const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [abortReason, setAbortReason] = useState("");
+  const [aborting, setAborting] = useState(false);
 
   const [chainCheck, setChainCheck] = useState<{ valid: boolean; firstBrokenIndex?: number } | null>(null);
 
@@ -96,9 +100,15 @@ export function ListingDetail() {
           const mine = await coreApi.getMyBid(id!);
           if (!cancelled) setMyBid(mine);
         }
-        if (l.status === "onthuld" || l.status === "onherroepelijk") {
+        if (l.status === "onthuld" || l.status === "onherroepelijk" || l.status === "buiten_procedure") {
           const lb = await coreApi.getLogbook(id!);
           if (!cancelled) setLogbook(lb);
+        }
+        // E4-S3: het bewijs dát het logboek is verstuurd. Niemand hoeft erom te
+        // vragen; deze pagina laat alleen zien wat er al vanzelf gebeurd is.
+        if (l.status === "onherroepelijk" || l.status === "buiten_procedure") {
+          const d = await coreApi.getDelivery(id!);
+          if (!cancelled) setDelivery(d);
         }
       } catch (err) {
         if (!cancelled) setError(String(err));
@@ -160,6 +170,31 @@ export function ListingDetail() {
       motivation: motivation || undefined,
       takeover: chosenTakeover,
     };
+  }
+
+  /**
+   * E7-S2: de verkoop is buiten deze procedure om afgehandeld. Dit verhindert
+   * zo'n verkoop niet, dat kan geen enkel systeem, maar het dwingt af dat de
+   * procedure een eindstatus met opgegeven reden krijgt en dat alle bieders
+   * daarover automatisch het logboek ontvangen.
+   */
+  async function onAbort() {
+    if (!id) return;
+    if (abortReason.trim().length < 3) {
+      setError("Geef een reden op. Die komt onverkort in het openbare logboek.");
+      return;
+    }
+    if (!confirm("Deze procedure definitief afsluiten buiten het biedproces om? Dit is onomkeerbaar.")) return;
+    setAborting(true);
+    setError(null);
+    try {
+      setLogbook(await coreApi.abort(id, abortReason.trim()));
+      setAbortReason("");
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setAborting(false);
+    }
   }
 
   async function onBid() {
@@ -254,7 +289,7 @@ export function ListingDetail() {
     <div>
       <h1>{listing.address}</h1>
       <p>
-        Status: <strong>{listing.status}</strong> — deadline {new Date(listing.deadline).toLocaleString("nl-NL")}
+        Status: <strong>{listing.status}</strong>, deadline {new Date(listing.deadline).toLocaleString("nl-NL")}
       </p>
       {listing.bidCount !== undefined && <p>Aantal biedingen: {listing.bidCount} (bedragen pas na onthulling)</p>}
 
@@ -288,7 +323,7 @@ export function ListingDetail() {
           <h2>Jouw lopende bod</h2>
           <p>
             Dit is je bewijs dat je bod in het logboek staat. Bewaar het: na de onthulling kun je hiermee narekenen dat
-            precies dit bod is meegeteld. Het bedrag staat er bewust niet bij — de server kan dat zelf nog niet lezen.
+            precies dit bod is meegeteld. Het bedrag staat er bewust niet bij, want de server kan dat zelf nog niet lezen.
           </p>
           <table>
             <tbody>
@@ -337,11 +372,11 @@ export function ListingDetail() {
           {myBid && listing.rules.aanpassenToegestaan && (
             <p>
               Je vervangt hiermee je hele bod door een nieuwe verzegeling. Dat je hebt aangepast blijft in het logboek
-              staan, wat je aanpaste niet — dat is tot de deadline voor niemand leesbaar.
+              staan, wat je aanpaste niet. Dat is tot de deadline voor niemand leesbaar.
             </p>
           )}
           <p>
-            Je hele bod — bedrag, datums, voorbehouden, overname en motivatie — wordt in deze browser versleuteld naar
+            Je hele bod (bedrag, datums, voorbehouden, overname en motivatie) wordt in deze browser versleuteld naar
             de deadline. Deze server kan het pas erna lezen.
           </p>
           {listing.sellerPublicKey && (
@@ -423,7 +458,7 @@ export function ListingDetail() {
                   <div key={item.itemId}>
                     <label>
                       {item.label}
-                      {item.amount !== undefined && ` — gevraagd € ${item.amount.toLocaleString("nl-NL")}`}
+                      {item.amount !== undefined && ` (gevraagd € ${item.amount.toLocaleString("nl-NL")})`}
                       <select
                         value={state.choice}
                         onChange={(e) =>
@@ -466,6 +501,46 @@ export function ListingDetail() {
 
       {listing.status === "gesloten" && <p>Gesloten. Wacht op automatische onthulling via de drand-timelock…</p>}
 
+      {listing.status === "buiten_procedure" && (
+        <section>
+          <h2>Buiten deze procedure afgehandeld</h2>
+          <p>
+            Deze verkoop is niet via de deadline en de gunning afgerond. Opgegeven reden:{" "}
+            <strong>{listing.buitenProcedureReden}</strong>
+            {listing.buitenProcedureAt && ` (${new Date(listing.buitenProcedureAt).toLocaleString("nl-NL")})`}
+          </p>
+          <p>
+            Verzegelde biedingen die op dat moment nog niet geopend waren, blijven verzegeld: ze worden niet alsnog
+            opengemaakt voor een procedure die niet doorgaat. Wat je wél houdt, is het bewijs dát je bod er stond en
+            dat het nooit geopend is, zichtbaar in de keten hieronder.
+          </p>
+        </section>
+      )}
+
+      {isSeller && listing.status !== "buiten_procedure" && listing.status !== "onherroepelijk" && (
+        <section>
+          <h2>Buiten deze procedure afhandelen</h2>
+          <p>
+            Wordt de woning onderhands verkocht, van de markt gehaald of anderszins buiten dit biedproces om
+            afgehandeld? Sluit de procedure dan hier af met een reden. Een inschrijving die zonder uitleg stilvalt is
+            precies waarover kopers klagen; dit maakt er een vastgelegde eindstatus van, en alle bieders krijgen
+            automatisch het logboek.
+          </p>
+          <label>
+            Reden (komt onverkort in het openbare logboek)
+            <input
+              value={abortReason}
+              onChange={(e) => setAbortReason(e.target.value)}
+              maxLength={500}
+              placeholder="Bijvoorbeeld: woning onderhands verkocht buiten de inschrijving om"
+            />
+          </label>
+          <button onClick={onAbort} disabled={aborting}>
+            {aborting ? "Vastleggen…" : "Procedure afsluiten en logboek versturen"}
+          </button>
+        </section>
+      )}
+
       {logbook && (
         <section>
           <h2>Biedlogboek (onthuld)</h2>
@@ -487,12 +562,12 @@ export function ListingDetail() {
                 {logbook.entries.map((e, i) => (
                   <tr key={i}>
                     <td>{e.bidderRef}</td>
-                    <td>{e.valid ? `€ ${e.amount.toLocaleString("nl-NL")}` : "—"}</td>
-                    <td>{e.valid ? isoToDate(e.handoverDate) : "—"}</td>
-                    <td>{e.valid ? isoToDate(e.validUntil) : "—"}</td>
+                    <td>{e.valid ? `€ ${e.amount.toLocaleString("nl-NL")}` : "-"}</td>
+                    <td>{e.valid ? isoToDate(e.handoverDate) : "-"}</td>
+                    <td>{e.valid ? isoToDate(e.validUntil) : "-"}</td>
                     <td>
                       {!e.valid
-                        ? "—"
+                        ? "-"
                         : e.conditions.length === 0
                           ? "geen"
                           : e.conditions
@@ -501,7 +576,7 @@ export function ListingDetail() {
                     </td>
                     <td>
                       {!e.valid
-                        ? "—"
+                        ? "-"
                         : e.takeover.length === 0
                           ? "geen"
                           : e.takeover
@@ -518,7 +593,7 @@ export function ListingDetail() {
                         {listing.awardedBidId === e.bidId ? (
                           <strong>gegund</strong>
                         ) : listing.awardedBidId || !e.valid ? (
-                          "—"
+                          "-"
                         ) : (
                           <button onClick={() => onAward(e.bidId)} disabled={awarding}>
                             Gun aan deze bieder
@@ -538,7 +613,7 @@ export function ListingDetail() {
           {awardedIdentity && (
             <p>
               Identiteit vrijgegeven na gunning: <strong>{awardedIdentity.name}</strong>
-              {awardedIdentity.contact && ` — ${awardedIdentity.contact}`}. Dat deze vrijgave plaatsvond, staat nu als
+              {awardedIdentity.contact && ` (${awardedIdentity.contact})`}. Dat deze vrijgave plaatsvond, staat nu als
               aparte regel in het logboek hierboven.
             </p>
           )}
@@ -548,6 +623,21 @@ export function ListingDetail() {
               deze woning niet meer heeft, of als de bieder geen naam meestuurde.
             </p>
           )}
+          <h3>Is het logboek verstuurd?</h3>
+          {delivery ? (
+            <p>
+              Ja, op {new Date(delivery.deliveredAt).toLocaleString("nl-NL")} naar{" "}
+              {delivery.recipientRefs.length} betrokkene(n): {delivery.recipientRefs.join(", ")}. Dat staat als regel{" "}
+              {delivery.logIndex} (<code>logboek_verstuurd</code>) in de keten, dus of jij het hoort te krijgen is
+              geen kwestie van welles-nietes meer. Er staan alleen pseudonieme verwijzingen in, geen adressen.
+            </p>
+          ) : (
+            <p>
+              Nog niet. Zodra de procedure een eindstatus bereikt, gaat het logboek vanzelf naar alle betrokkenen.
+              Je hoeft er niet om te vragen.
+            </p>
+          )}
+
           <h3>Zelf controleren</h3>
           <p>
             Elke regel hierboven bevat de hash van de regel ervóór. Wie achteraf iets wijzigt, invoegt of weghaalt,

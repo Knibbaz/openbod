@@ -45,7 +45,15 @@ export type ListingStatus =
   | "biedfase"
   | "gesloten"
   | "onthuld"
-  | "onherroepelijk";
+  | "onherroepelijk"
+  /**
+   * De procedure is buiten dit systeem om afgehandeld: ingetrokken, onderhands
+   * verkocht, of anderszins gestopt zonder gunning via de deadline. Dit is een
+   * eindstatus (protocol.md §5b). Hij bestaat omdat het niet hebben van zo'n
+   * status precies de klacht is die kopers melden: een inschrijving die stilvalt
+   * en waarvan achteraf niemand kan aantonen wat er gebeurd is.
+   */
+  | "buiten_procedure";
 
 export type PrijsVorm = "vraagprijs" | "richtprijs" | "bieden_vanaf";
 export type Verkoopmethode = "inschrijving" | "onderhandeling" | "bieden_met_deadline";
@@ -75,6 +83,16 @@ export interface Listing {
   sellerPublicKey?: string;
   /** Gezet zodra er gegund is; verwijst naar het gekozen bod. */
   awardedBidId?: string;
+  /**
+   * Pseudonieme subject van de verkoper (dezelfde vorm als `bidderSub`), zodat
+   * het biedlogboek ook naar de verkoper gaat en niet alleen naar de bieders
+   * (E4-S3). Optioneel: de MVP kent nog geen volwaardige verkopersrol.
+   */
+  sellerSub?: string;
+  /** Verplichte reden bij status `buiten_procedure`; staat ook in het logboek. */
+  buitenProcedureReden?: string;
+  /** Moment waarop de procedure buiten het systeem om is afgehandeld. */
+  buitenProcedureAt?: string;
 }
 
 /** Wat de core daadwerkelijk opslaat vóór de onthulling: nooit leesbare inhoud. */
@@ -114,7 +132,18 @@ export type LogEntryType =
   | "listing_closed"
   | "bid_revealed"
   | "gegund"
-  | "identiteit_vrijgegeven";
+  | "identiteit_vrijgegeven"
+  /**
+   * De procedure is buiten dit systeem om afgehandeld. Legt vast dát en wanneer
+   * het gebeurde, plus een hash van de opgegeven reden (I13).
+   */
+  | "buiten_procedure_afgehandeld"
+  /**
+   * Het biedlogboek is verstuurd naar alle betrokkenen. Legt de verzending zelf
+   * vast in de keten, zodat "ik heb nooit een logboek gekregen" een
+   * controleerbare bewering wordt in plaats van welles-nietes (I14).
+   */
+  | "logboek_verstuurd";
 
 export interface LogEntry {
   index: number;

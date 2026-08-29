@@ -12,7 +12,7 @@ async function sha256Hex(input: string): Promise<string> {
  * Herrekent de hashketen in de browser, onafhankelijk van wat de API beweert
  * (I3, I8). Dit is dezelfde herrekening als HashChain.verify in @openbod/core,
  * hier client-side zodat "controleer het zelf" ook echt in de browser gebeurt.
- * Handtekeningverificatie (Ed25519) hoort hier niet bij nog — gebruik daarvoor
+ * Handtekeningverificatie (Ed25519) hoort hier nog niet bij. Gebruik daarvoor
  * de `openbod-verify`-CLI (packages/verifier), die het volledige bewijs checkt.
  */
 export async function verifyHashChainInBrowser(entries: LogEntry[]): Promise<{ valid: boolean; firstBrokenIndex?: number }> {

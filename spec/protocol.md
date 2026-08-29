@@ -32,6 +32,8 @@ Dit is de kern. Elke invariant is een eigenschap die altijd moet gelden en die m
 - **I9 Regeltransparantie.** De procesregels (intrekken, aanpassen, zichtbaarheid van het aantal, wie inzage heeft) staan vast bij het aanmaken van de woning, zijn zichtbaar, en kunnen niet halverwege veranderen.
 - **I10 Identiteitsonafhankelijkheid.** De integriteitsgaranties gelden ongeacht de gebruikte identiteitsmethode.
 - **I11 Privacy.** Motivatie en persoonsgegevens komen niet in het openbare logboek. In de gedeelde publieke log staan alleen hashes.
+- **I13 Vastgelegde afhandeling.** Elke procedure eindigt in een vastgelegde eindstatus. Wordt zij buiten het systeem om afgehandeld (onderhandse verkoop, intrekking), dan is dat een gelogde gebeurtenis met opgegeven reden. Een procedure kan niet stilvallen zonder spoor.
+- **I14 Aantoonbare verstrekking.** Het biedlogboek gaat bij het bereiken van een eindstatus automatisch naar alle betrokkenen, zonder dat iemand erom hoeft te vragen, en die verzending is zelf een logregel met uitsluitend pseudonieme ontvangers.
 - **I12 Anonimiteit tot gunning.** De identiteit van een bieder is voor de operator en de makelaar op geen enkel moment leesbaar, en is voor de verkoper pas beschikbaar nadat hij aan die bieder gunt. Vrijgave is een gelogde gebeurtenis.
 
 ## 4. Fasen (toestandsmachine)
@@ -39,6 +41,8 @@ Dit is de kern. Elke invariant is een eigenschap die altijd moet gelden en die m
 ```
 [aangemaakt] --open--> [biedfase] --deadline--> [gesloten]
     --onthulling--> [onthuld] --gunning--> [onherroepelijk]
+
+[biedfase | gesloten | onthuld] --afhandeling buiten de procedure--> [buiten_procedure]
 ```
 
 - **Aangemaakt.** Woning en regels zijn vastgelegd. Regels zijn vanaf hier onveranderlijk (I9).
@@ -46,8 +50,11 @@ Dit is de kern. Elke invariant is een eigenschap die altijd moet gelden en die m
 - **Gesloten.** Op de deadline worden geen nieuwe of gewijzigde biedingen meer geaccepteerd.
 - **Onthuld.** De timelock-sleutel is beschikbaar, biedingen worden ontsleuteld en tegen hun commitment gevalideerd (I2, I4). Het biedlogboek wordt gegenereerd en verstuurd (I11).
 - **Onherroepelijk.** Na gunning en het verlopen van bedenktijd en voorbehouden. Het logboek is definitief.
+- **Buiten_procedure.** Eindstatus voor een verkoop die niet via deadline en gunning is afgerond (zie §5b).
 
-Toegestane overgangen zijn alleen die in het diagram. Elke andere overgang is een fout.
+Toegestane overgangen zijn alleen die in het diagram. Elke andere overgang is een fout. `onherroepelijk` en `buiten_procedure` zijn beide eindstatussen: vanuit die statussen is geen enkele overgang meer toegestaan.
+
+Bij het bereiken van een eindstatus wordt het biedlogboek automatisch verstrekt (§6a, I14).
 
 ## 5. Commit- en reveal-mechaniek
 
@@ -73,11 +80,30 @@ Bij het aanmaken van de woning genereert de verkoper een sleutelpaar. De publiek
 
 Deze eerlijkheid is opzettelijk: een standaard die meer belooft dan zij afdwingt, is precies het probleem dat dit project wil oplossen.
 
+## 5b. Afhandeling buiten de procedure
+
+Een systeem kan niet verhinderen dat een woning buiten het biedproces om wordt verkocht — dat gebeurt per definitie buiten het systeem. Wat het wél kan afdwingen, is dat zoiets een vastgelegde eindstatus oplevert in plaats van een inschrijving die zonder uitleg stilvalt. Dat laatste is een van de klachten die kopers melden: een gesloten inschrijving waarvan achteraf niets te reconstrueren valt.
+
+- De overgang naar `buiten_procedure` vereist een opgegeven reden. Die reden staat onverkort in het openbare logboek en is dus een procedurele verklaring, geen plek voor persoonsgegevens.
+- De gebeurtenis wordt gelogd als `buiten_procedure_afgehandeld`, met een hash van `{listingId, vorige status, reden}`.
+- Biedingen die op dat moment nog niet onthuld waren, blijven verzegeld. Zij worden niet alsnog geopend voor een procedure die niet doorgaat. De bieders houden wel het bewijs dát hun bod er stond en dat het nooit geopend is: `bid_placed` staat in de keten, `bid_revealed` niet.
+- Het logboek wordt daarna automatisch verstrekt (§6a), zodat bieders van een afgebroken inschrijving niet in het ongewisse blijven.
+
 ## 6. Logboek
 
 Elke logregel heeft de vorm uit ARCHITECTURE.md: `{ index, timestamp, type, payloadHash, prevHash, entryHash }`, met `entryHash = H(index || timestamp || type || payloadHash || prevHash)`. De root is de laatste `entryHash`. Verificatie herrekent de keten en vergelijkt de root met de geanchorde waarde (I3, I8).
 
 Het openbare biedlogboek bevat de NTA 8061-velden en is geanonimiseerd (I11). Het bevat geen motivaties en geen herleidbare persoonsgegevens.
+
+## 6a. Automatische verstrekking
+
+Het biedlogboek is sinds 2023 verplicht, maar in de praktijk moesten kopers erom vragen en kreeg maar een deel van hen het. In deze spec is verstrekken daarom geen handeling van de makelaar maar een gevolg van de toestandsmachine: bij het bereiken van een eindstatus (`onherroepelijk` of `buiten_procedure`) gaat het ondertekende logboek naar alle betrokkenen — alle bieders, ingetrokken biedingen inbegrepen, en de verkoper.
+
+- De verzending is zelf een logregel, `logboek_verstuurd`, met een hash van `{rootHash, pseudonieme ontvangers}`. "Ik heb nooit een logboek gekregen" wordt daarmee een controleerbare bewering.
+- In die logregel staan uitsluitend pseudonieme verwijzingen, nooit adressen (I11).
+- Verzending is idempotent: herhaalde pogingen leveren precies één `logboek_verstuurd` op.
+- Mislukt de verzending, dan komt er géén logregel. De keten claimt liever niets dan een verzending die niet plaatsvond.
+- De core kent geen adressen en hoort ze niet te kennen. Zij stuurt een bezorgopdracht met pseudonieme subjects naar de identiteitslaag, die als enige de koppeling naar een adres heeft (§7). De scheiding uit I10 blijft daarmee intact.
 
 ## 7. Identiteitscontract
 
@@ -101,10 +127,12 @@ De core ontvangt een ondertekend token met minimaal `iss, sub, aud, assurance_le
 | Instantie | Vals claimen dat zij conform en actueel is | Certificering, trust-list, anchoring |
 | Netwerk of derde | Inhoud van biedingen onderscheppen | I1 (verzegeld bij de bieder) |
 | Oneerlijke makelaar | Weten wie er biedt, en daarop sturen | I12 (envelop versleuteld naar de verkoper, niet naar de instantie) |
+| Oneerlijke makelaar | Een inschrijving laten stilvallen en onderhands verkopen | I13 (eindstatus met gelogde reden verplicht) |
+| Oneerlijke makelaar | Het biedlogboek niet verstrekken en dat betwisten | I14 (verstrekking is automatisch en zelf een logregel) |
 | Verkoper | Identiteiten inzien vóór gunning | Slechts deels: gelogde vrijgave maakt het zichtbaar, niet onmogelijk (zie §5a) |
 
 Niet afgedekt zonder extra maatregelen: bewijzen dat een draaiende server exact de gemeten code uitvoert. Daarvoor is remote attestation nodig. Tot dan leunt het bewijs op certificering, anchoring en de ontvangstbewijzen van gebruikers.
 
 ## 10. Conformiteit
 
-Een implementatie is conform als zij voor elke invariant I1 tot en met I12 de bijbehorende test in de conformance-suite haalt, en de NTA 8061-velden en verkoopmethoden ondersteunt. Falen op één invariant betekent niet conform.
+Een implementatie is conform als zij voor elke invariant I1 tot en met I14 de bijbehorende test in de conformance-suite haalt, en de NTA 8061-velden en verkoopmethoden ondersteunt. Falen op één invariant betekent niet conform.

@@ -12,6 +12,14 @@ export interface TakeoverItem {
   amount?: number;
 }
 
+export type ListingStatus =
+  | "aangemaakt"
+  | "biedfase"
+  | "gesloten"
+  | "onthuld"
+  | "onherroepelijk"
+  | "buiten_procedure";
+
 export interface Listing {
   id: string;
   address: string;
@@ -21,11 +29,13 @@ export interface Listing {
   deadline: string;
   rules: { intrekkenToegestaan: boolean; aanpassenToegestaan: boolean; aantalBiedingenZichtbaar: boolean };
   takeoverItems: TakeoverItem[];
-  status: "aangemaakt" | "biedfase" | "gesloten" | "onthuld" | "onherroepelijk";
+  status: ListingStatus;
   createdAt: string;
   bidCount?: number;
   sellerPublicKey?: string;
   awardedBidId?: string;
+  buitenProcedureReden?: string;
+  buitenProcedureAt?: string;
 }
 
 export interface BidReceipt {
@@ -55,8 +65,20 @@ export interface LogEntry {
   entryHash: string;
 }
 
+/** Bewijs dat het logboek automatisch is verstuurd; bevat alleen pseudonieme refs. */
+export interface Delivery {
+  listingId: string;
+  recipientRefs: string[];
+  deliveredAt: string;
+  logIndex: number;
+}
+
 export interface Logbook {
-  listing: Pick<Listing, "id" | "address" | "prijsVorm" | "verkoopmethode" | "deadline">;
+  listing: Pick<Listing, "id" | "address" | "prijsVorm" | "verkoopmethode" | "deadline" | "status"> & {
+    buitenProcedureReden?: string;
+    buitenProcedureAt?: string;
+    awardedBidId?: string;
+  };
   entries: {
     bidId: string;
     bidderRef: string;
@@ -182,5 +204,23 @@ export const coreApi = {
   },
   async getLogbook(listingId: string) {
     return json<Logbook>(await fetch(`${CORE_URL}/listings/${listingId}/logbook`));
+  },
+  /**
+   * Afhandeling buiten de procedure om: geeft de verkoop een eindstatus met
+   * reden in plaats van een inschrijving die stilvalt (E7-S2).
+   */
+  async abort(listingId: string, reason: string) {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/abort`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ reason }),
+    });
+    return json<Logbook>(res);
+  },
+  /** null zolang het logboek nog niet verstuurd is; 404 is hier een normaal antwoord. */
+  async getDelivery(listingId: string): Promise<Delivery | null> {
+    const res = await fetch(`${CORE_URL}/listings/${listingId}/delivery`);
+    if (res.status === 404) return null;
+    return json<Delivery>(res);
   },
 };

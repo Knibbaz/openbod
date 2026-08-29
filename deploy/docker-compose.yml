@@ -24,6 +24,9 @@ services:
       # niemand inloggen. Zie packages/identity/src/server.ts: alleen voor
       # de publieke demo met verzonnen woningen, nooit voor echte biedingen.
       IDENTITY_DEMO_MODE: "true"
+      # Gedeeld geheim voor de bezorgopdrachten die de core naar
+      # /notify/logbook stuurt (E4-S3). Moet gelijk zijn aan dat van de core.
+      DELIVERY_SHARED_SECRET: ${DELIVERY_SHARED_SECRET}
       TRUST_PROXY: "true"
     restart: unless-stopped
     expose:
@@ -42,6 +45,11 @@ services:
       IDENTITY_ISSUER: ${PUBLIC_URL}/api/identity
       # De JWKS haalt de core intern op, niet via de publieke URL.
       IDENTITY_JWKS_URL: http://identity:4001/.well-known/jwks.json
+      # Automatische verstrekking van het biedlogboek (E4-S3). De core kent geen
+      # e-mailadressen; alleen identity kan een pseudonieme sub naar een adres
+      # terugvertalen. Zonder deze twee variabelen wordt er niets verstuurd.
+      CORE_DELIVERY_ENDPOINT: http://identity:4001/notify/logbook
+      DELIVERY_SHARED_SECRET: ${DELIVERY_SHARED_SECRET}
       TRUST_PROXY: "true"
     depends_on:
       - identity

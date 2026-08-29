@@ -5,7 +5,7 @@ import { z } from "zod";
  * belangrijkste stuk hier is `bidPayloadSchema`: de bieder bepaalt zelf de
  * inhoud van de versleutelde payload, dus wat er na de timelock-onthulling
  * uitkomt is net zo min vertrouwd als directe gebruikersinvoer (OWASP:
- * valideer bij elke vertrouwensgrens, ook na decryptie — niet alleen bij de
+ * valideer bij elke vertrouwensgrens, ook na decryptie, niet alleen bij de
  * HTTP-rand).
  */
 

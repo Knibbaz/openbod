@@ -1,7 +1,7 @@
 import { timelockEncrypt, mainnetClient, roundAt, Buffer } from "tlock-js";
 
 /**
- * Verzegeling gebeurt hier, in de browser — nooit op een server (ARCHITECTURE.md §3,
+ * Verzegeling gebeurt hier, in de browser, nooit op een server (ARCHITECTURE.md §3,
  * protocol.md §5). Dit spiegelt bewust de logica uit @openbod/core/commit en
  * @openbod/core/timelock: dezelfde canonicalisatie en hetzelfde hash-algoritme,
  * maar met Web Crypto in plaats van Node's `node:crypto`, want dit draait in de

@@ -98,6 +98,18 @@ elkaar alleen via een geverifieerd token kennen (ARCHITECTURE.md §5). Dat `core
 de JWKS intern ophaalt (`http://identity:4001/...`) terwijl de issuer de publieke
 URL is, is bewust: de issuer-claim is wat de bezoeker kan controleren.
 
+## Automatische verstrekking van het biedlogboek
+
+Zodra een woning een eindstatus bereikt (gegund of buiten de procedure afgehandeld)
+stuurt de core het logboek vanzelf naar alle betrokkenen. Daarvoor moeten
+`CORE_DELIVERY_ENDPOINT` en `DELIVERY_SHARED_SECRET` gezet zijn; ontbreken ze, dan
+waarschuwt de core bij het starten en wordt er niets verstuurd.
+
+De core kent geen e-mailadressen en hoort ze niet te kennen. Zij stuurt pseudonieme
+subjects naar `identity`, die als enige de koppeling naar een adres heeft. Het gedeelde
+geheim beschermt dat endpoint: zonder geheim zou iedereen ermee kunnen uitvragen of
+een sub bekend is.
+
 ## Waarom `PUBLIC_URL` op drie plekken staat
 
 - **CORS-origin** voor core en identity.
@@ -121,6 +133,11 @@ Deze staan ook in de UI, maar hier expliciet, want ze zijn geen bugs:
 - **Geen publieke verankering.** De root-hash wordt nog nergens extern gepubliceerd
   (zie de backlog). De hashketen en de handtekening zijn er wel, en de losse
   `verifier`-CLI rekent ze na.
+- **Het logboek wordt niet echt gemaild.** De automatische verstrekking (E4-S3)
+  werkt volledig: de core stuurt de bezorgopdracht naar identity en legt de
+  verzending vast als `logboek_verstuurd` in de hashketen. Alleen de laatste stap,
+  het daadwerkelijke mailen, schrijft naar de serverlog omdat er geen mailserver
+  is aangesloten. Zie `sendLogbookMail` in `packages/identity/src/server.ts`.
 
 De timelock is géén vereenvoudiging: die praat met het echte publieke
 drand-quicknet, ook hier. De container heeft dus uitgaande toegang tot

@@ -13,7 +13,7 @@ export function Uitleg() {
         </li>
         <li>
           <strong>Onthullen op de deadline.</strong> Zodra drand de rondesleutel publiceert, kan iedereen ontsleutelen
-          — ook deze server, pas op dat moment. Zie <code>packages/core/src/reveal/reveal.ts</code>.
+          (ook deze server, pas op dat moment). Zie <code>packages/core/src/reveal/reveal.ts</code>.
         </li>
         <li>
           <strong>Onwrikbaar logboek.</strong> Elke gebeurtenis staat in een hashketen. Wijzigen breekt de keten

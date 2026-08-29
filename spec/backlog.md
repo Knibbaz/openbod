@@ -129,12 +129,18 @@ Testcases:
 Als bieder en verkoper wil ik het volledige logboek automatisch ontvangen na afronding, zodat ik het niet hoef op te vragen.
 
 Acceptatiecriteria:
-- Bij het onherroepelijk worden gaat het logboek naar alle betrokkenen.
+- Bij het bereiken van een eindstatus (onherroepelijk of buiten_procedure) gaat het logboek naar alle betrokkenen, inclusief bieders die hun bod hadden ingetrokken.
 - Het logboek bevat de NTA 8061-velden.
+- De verzending is zelf een logregel (`logboek_verstuurd`) met alleen pseudonieme ontvangers.
+- Verzending is idempotent; een mislukte poging levert geen logregel op en wordt opnieuw geprobeerd.
+- De core kent geen e-mailadressen: zij stuurt pseudonieme subjects naar de identiteitslaag, die als enige de koppeling heeft.
 
 Testcases:
 - TC1: alle bieders en de verkoper ontvangen het logboek zonder erom te vragen.
 - TC2: het openbare logboek is geanonimiseerd.
+- TC3: herhaald en gelijktijdig aanroepen levert precies een `logboek_verstuurd`-regel op.
+- TC4 (beveiliging): een mislukte bezorging claimt geen verzending in de keten.
+- TC5 (beveiliging): er wordt niets verstuurd zolang de procedure nog loopt.
 
 ## E5. Identiteit
 
@@ -197,6 +203,25 @@ Testcases:
 - TC1: de verkoper ziet het volledige pakket per bieder.
 - TC2: gunnen legt de keuze vast in het logboek.
 
+### E7-S2 Afhandeling buiten de procedure om
+Als bieder wil ik dat een verkoop die buiten dit biedproces om wordt afgehandeld een vastgelegde eindstatus met reden krijgt, zodat een inschrijving niet zonder uitleg kan stilvallen.
+
+Dit is een van de klachten uit het meldpunt van Vereniging Eigen Huis: een gesloten inschrijving waarbij de woning toch buiten de procedure om wordt verkocht. Het systeem kan zo'n verkoop niet verhinderen, maar het kan wel afdwingen dat er iets controleerbaars van overblijft.
+
+Acceptatiecriteria:
+- De overgang naar status `buiten_procedure` vereist een opgegeven reden, die onverkort in het openbare logboek komt.
+- De gebeurtenis wordt gelogd als `buiten_procedure_afgehandeld`.
+- Nog niet onthulde biedingen blijven verzegeld en worden niet alsnog geopend.
+- Het logboek gaat daarna automatisch naar alle bieders (E4-S3).
+
+Testcases:
+- TC1: afbreken levert status `buiten_procedure`, een logregel en een logboek met de reden op.
+- TC2: bieders krijgen het logboek, ook zonder gunning.
+- TC3: niet onthulde biedingen staan als `bid_placed` in de keten en niet als `bid_revealed`.
+- TC4 (beveiliging): een lege reden wordt geweigerd.
+- TC5 (beveiliging): na afbreken wordt een nieuw bod geweigerd.
+- TC6 (beveiliging): een reeds gegunde procedure kan niet alsnog als buiten de procedure worden weggeschreven.
+
 ## E8. Verificatie voor gebruikers
 
 ### E8-S1 Zelf een bod en logboek verifieren
@@ -251,7 +276,7 @@ Testcases:
 
 ## Prioritering voor de demo (MVP)
 
-Minimale set om het verhaal te tonen en een subsidieaanvraag te onderbouwen: E1-S1, E1-S2, E2-S1, E2-S2, E3-S1, E3-S2, E4-S1, E4-S3, E5-S1, E6-S2, E7-S1, E8-S1.
+Minimale set om het verhaal te tonen en een subsidieaanvraag te onderbouwen: E1-S1, E1-S2, E2-S1, E2-S2, E3-S1, E3-S2, E4-S1, E4-S3, E5-S1, E6-S2, E7-S1, E7-S2, E8-S1.
 
 Later: E1-S3, E4-S2, E5-S2, E6-S1, E9, E10.
 

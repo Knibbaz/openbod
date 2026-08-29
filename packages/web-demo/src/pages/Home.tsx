@@ -16,10 +16,10 @@ export function Home() {
 
   return (
     <div>
-      <h1>OpenBod — verzegeld bieden</h1>
+      <h1>OpenBod: verzegeld bieden</h1>
       <p>
         Referentie-demo van een verzegeld biedproces. Biedingen zijn tot de deadline versleuteld, ook voor deze
-        server — geverifieerd op <Link to="/uitleg">de uitlegpagina</Link>.
+        server, geverifieerd op <Link to="/uitleg">de uitlegpagina</Link>.
       </p>
       <Link to="/woningen/nieuw">
         <button>Woning aanmaken</button>
@@ -29,7 +29,7 @@ export function Home() {
         {listings.map((l) => (
           <li key={l.id}>
             <Link to={`/woningen/${l.id}`}>
-              {l.address} — {l.status}
+              {l.address} ({l.status})
               {l.bidCount !== undefined ? ` (${l.bidCount} bieding${l.bidCount === 1 ? "" : "en"})` : ""}
             </Link>
           </li>

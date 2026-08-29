@@ -7,7 +7,7 @@ MVP-implementatie van OpenBod: drie services (`identity`, `core`, `web-demo`) pl
 
 - Node.js ≥ 20
 - Internettoegang naar `api.drand.sh` (het publieke drand quicknet-netwerk, periode 3s).
-  Er draait geen eigen of lokale timelock — de MVP gebruikt het echte netwerk.
+  Er draait geen eigen of lokale timelock; de MVP gebruikt het echte netwerk.
 
 ## Installeren en bouwen
 
@@ -24,6 +24,17 @@ npm run dev --workspace packages/identity   # poort 4001
 npm run dev --workspace packages/core       # poort 4000
 npm run dev --workspace packages/web-demo   # poort 5173
 ```
+
+Wil je de automatische verstrekking van het biedlogboek lokaal echt zien lopen, zet dan
+in beide backends hetzelfde geheim:
+
+```
+DELIVERY_SHARED_SECRET=lokaal-geheim npm run dev --workspace packages/identity
+CORE_DELIVERY_ENDPOINT=http://localhost:4001/notify/logbook \
+  DELIVERY_SHARED_SECRET=lokaal-geheim npm run dev --workspace packages/core
+```
+
+Zonder die variabelen waarschuwt de core alleen dat er niets verstuurd wordt.
 
 Open `http://localhost:5173`. Er is geen mailserver aangesloten: een "magic link"
 wordt getoond in de UI en gelogd door `identity`, in plaats van gemaild.
@@ -60,10 +71,12 @@ Gebouwd (zie `spec/backlog.md` §"Prioritering voor de demo"): woning aanmaken m
 spelregels en lijst roerende zaken, magic-link login, verzegeld bod met het volledige
 pakket uit README §6, één lopend bod per bieder dat je zelf kunt inzien, aanpassen en
 intrekken, anoniem bieden met vrijgave bij gunning, automatische onthulling op de
-deadline, hashketen-logboek, aantal-zichtbaar-regel, en de losse verifier.
+deadline, hashketen-logboek, aantal-zichtbaar-regel, automatische verstrekking van het
+biedlogboek bij een eindstatus, afhandeling buiten de procedure om met vastgelegde reden,
+en de losse verifier.
 
 Concepten worden bewust niet serverside bewaard. Zou de instantie een concept opslaan,
-dan weet zij vóór de deadline dat iemand een bod voorbereidt — precies de
+dan weet zij vóór de deadline dat iemand een bod voorbereidt, precies de
 informatievoorsprong die dit project wil afschaffen. Een concept hoort dus in de browser
 van de bieder te blijven en komt daarom niet in het logboek.
 
@@ -84,10 +97,18 @@ Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
   is. Werkt voor de demo; productie gebruikt een betrouwbare scheduler.
 - **Geen anchoring en geen certificering.** Alleen de instantie zelf ondertekent; er is nog
   geen gedeelde transparency-log of toetser (ARCHITECTURE.md §6.2 en §6.3).
+- **Het logboek wordt niet echt gemaild.** De verstrekking zelf werkt volledig, inclusief
+  de `logboek_verstuurd`-regel in de hashketen. Alleen de laatste stap schrijft naar de
+  serverlog, want er is geen mailserver aangesloten (`sendLogbookMail` in
+  `packages/identity/src/server.ts`). Zonder `CORE_DELIVERY_ENDPOINT` en
+  `DELIVERY_SHARED_SECRET` verstuurt de core helemaal niets en zegt dat ook bij het starten.
+- **Sub naar e-mail in het geheugen.** De identity-backend onthoudt die koppeling alleen
+  voor wie tijdens deze processtart inlogde. Na een herstart is bezorging aan eerdere
+  deelnemers onmogelijk tot zij opnieuw inloggen.
 - **Geen verkopersrol.** Woningen aanmaken en gunnen vragen geen verkopersauthenticatie.
   Bij gunning valt dat mee: wie de sleutel niet heeft, krijgt een envelop die hij niet kan
   openen, en de gunning staat onuitwisbaar in het logboek. Een echte instantie hoort hier
   bezit van de private sleutel te laten bewijzen.
 - **Sleutel van de verkoper in localStorage.** Kwijt is kwijt, en dan blijft de identiteit
-  van de winnende bieder onleesbaar. Productie geeft hier een herstelpad — maar nooit een
+  van de winnende bieder onleesbaar. Productie geeft hier een herstelpad, maar nooit een
   sleutel die de operator ook heeft, want dan vervalt de hele garantie.
