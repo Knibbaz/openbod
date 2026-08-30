@@ -247,6 +247,13 @@ Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
   `Persistence`-poort; de invarianten en het API-contract veranderen niet.
   Lokaal draait alles standaard zonder opslag: zet `CORE_DB_PATH` om dat te
   wijzigen, en `IDENTITY_DB_PATH` voor de koppeling sub naar e-mail.
+- **Concepten staan leesbaar op de server.** Een voorbereid, nog niet verzegeld bod wordt bij het
+  account van de bieder bewaard (`bid_drafts`), zodat het niet verdwijnt bij een nieuw apparaat of
+  gewiste browsergegevens. De prijs is dat wie de instantie beheert het kan lezen, inclusief het
+  bedrag, en kan zien dat iemand een bod voorbereidt. Daarom is er uitsluitend toegang tot het
+  eigen concept, bestaat er geen endpoint dat concepten telt, en wordt het concept gewist zodra het
+  echte bod binnen is. Een concept is geen bod: het staat niet in de hashketen en telt nergens mee.
+  De garantie dat niemand kan meelezen begint pas bij het verzegelde bod.
 - **Motivaties zijn voor niemand zichtbaar.** Een bieder kan een motivatie meesturen en die is
   uitsluitend voor de verkoper bedoeld, maar er is geen endpoint dat haar teruggeeft. Dat is met
   opzet: zonder verkopersrol zou zo'n endpoint de motivatie aan iedere ingelogde gebruiker tonen.

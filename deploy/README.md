@@ -363,6 +363,11 @@ Deze staan ook in de UI, maar hier expliciet, want ze zijn geen bugs:
 - **Geen publieke verankering.** De root-hash wordt nog nergens extern gepubliceerd
   (zie de backlog). De hashketen en de handtekening zijn er wel, en de losse
   `verifier`-CLI rekent ze na.
+- **Concepten zijn niet versleuteld.** Een voorbereid bod wordt serverzijdig bewaard zodat het
+  een nieuw apparaat overleeft, maar anders dan een verzegeld bod is het leesbaar voor wie de
+  instantie beheert. Dat staat ook zo op het scherm bij de bieder. Alleen het eigen concept is
+  opvraagbaar en er is geen endpoint dat aantallen teruggeeft, zodat het geen teller wordt van hoeveel
+  belangstelling er is voor de sluitingstijd.
 - **Het logboek wordt niet echt gemaild.** De automatische verstrekking (E4-S3)
   werkt volledig: de core stuurt de bezorgopdracht naar identity en legt de
   verzending vast als `logboek_verstuurd` in de hashketen. Alleen de laatste stap,

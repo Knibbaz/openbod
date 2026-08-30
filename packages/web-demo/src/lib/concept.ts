@@ -1,20 +1,24 @@
+import { CORE_URL, getToken } from "./api";
+
 /**
- * Een bod als concept bewaren, zonder de server iets te laten weten.
+ * Een bod als concept bewaren.
  *
  * Een koper is niet altijd in één zitting klaar: er moet nog gebeld worden met
  * de hypotheekadviseur, of er komt morgen een gesprek. Dat hij dan opnieuw moet
- * beginnen is onnodig vervelend. Maar een concept dat naar de server gaat, zou
- * de instantie vóór de sluitingstijd laten weten dat iemand een bod voorbereidt
- * en waarvoor. Dat is precies de informatievoorsprong die dit project wil
- * afschaffen, dus het concept blijft in de browser van de bieder.
+ * beginnen is onnodig vervelend.
  *
- * Gevolg dat we eerlijk moeten benoemen aan de bieder: op een ander apparaat of
- * na het wissen van browsergegevens is het concept weg. Een concept is dan ook
- * geen bod: het staat niet in het logboek en telt nergens mee tot het verzegeld
- * verstuurd is.
+ * Dit stond eerder alleen in de browser, zodat de instantie er niets van wist.
+ * Dat had een prijs die zwaarder woog dan gedacht: op een ander apparaat, na
+ * het wissen van browsergegevens of na een nieuwe laptop was het concept weg.
+ * Voor een koper die één keer in zijn leven een huis koopt, is dat het verkeerde
+ * moment om opnieuw te moeten beginnen.
+ *
+ * Wat het kost, en dat hoort de bieder te weten: een concept is niet verzegeld.
+ * Wie de instantie beheert kan het lezen, inclusief het bedrag. Daarom is een
+ * concept ook geen bod. Het staat niet in het logboek, het telt nergens mee, en
+ * pas als het verzegeld verstuurd is geldt de garantie dat niemand het kan lezen
+ * voordat de sluitingstijd verstrijkt.
  */
-
-const PREFIX = "openbod_concept_";
 
 /** Wat het biedformulier invult; bewust hetzelfde als de velden op het scherm. */
 export interface Concept {
@@ -26,48 +30,39 @@ export interface Concept {
   takeover: Record<string, { choice: string; amount: string }>;
   bidderName: string;
   bidderContact: string;
-  /**
-   * Optioneel tijdstip waarop dit concept zichzelf als bod verstuurt. De
-   * planning leeft in dit tabblad en nergens anders: de server kent hem niet en
-   * kan hem dus ook niet uitvoeren. Staat de browser dicht op dat moment, dan
-   * gebeurt er niets, en dat moet de bieder weten voordat hij erop vertrouwt.
-   */
-  scheduledAt?: string;
   savedAt: string;
 }
 
-function key(listingId: string): string {
-  return `${PREFIX}${listingId}`;
+function headers(): Record<string, string> {
+  const token = getToken();
+  return {
+    "content-type": "application/json",
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+  };
 }
 
-export function saveConcept(listingId: string, concept: Omit<Concept, "savedAt">): Concept {
-  const stored: Concept = { ...concept, savedAt: new Date().toISOString() };
-  localStorage.setItem(key(listingId), JSON.stringify(stored));
-  return stored;
+export async function saveConcept(
+  listingId: string,
+  concept: Omit<Concept, "savedAt">,
+): Promise<Concept> {
+  const res = await fetch(`${CORE_URL}/listings/${listingId}/draft`, {
+    method: "PUT",
+    headers: headers(),
+    body: JSON.stringify(concept),
+  });
+  if (!res.ok) throw new Error(`concept bewaren mislukt (HTTP ${res.status})`);
+  return { ...concept, savedAt: new Date().toISOString() };
 }
 
-export function loadConcept(listingId: string): Concept | null {
-  const raw = localStorage.getItem(key(listingId));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Concept;
-  } catch {
-    // Een onleesbaar concept is nutteloos en mag geen pagina breken.
-    localStorage.removeItem(key(listingId));
-    return null;
-  }
+export async function loadConcept(listingId: string): Promise<Concept | null> {
+  if (!getToken()) return null;
+  const res = await fetch(`${CORE_URL}/listings/${listingId}/draft`, { headers: headers() });
+  if (res.status === 404 || res.status === 401) return null;
+  if (!res.ok) return null;
+  return (await res.json()) as Concept;
 }
 
-export function clearConcept(listingId: string) {
-  localStorage.removeItem(key(listingId));
-}
-
-/**
- * Alle concepten wissen. Nodig bij uitloggen: op een gedeeld apparaat hoort de
- * volgende gebruiker jouw halve bod niet te zien staan.
- */
-export function clearAllConcepten() {
-  for (const k of Object.keys(localStorage)) {
-    if (k.startsWith(PREFIX)) localStorage.removeItem(k);
-  }
+export async function clearConcept(listingId: string): Promise<void> {
+  if (!getToken()) return;
+  await fetch(`${CORE_URL}/listings/${listingId}/draft`, { method: "DELETE", headers: headers() });
 }

@@ -230,6 +230,35 @@ describe("Persistentie: een herstart wist geen biedingen", () => {
     expect(herstart.getLog(listingId).filter((e) => e.type === "logboek_verstuurd")).toHaveLength(1);
   }, 30_000);
 
+  it("een concept overleeft een herstart en verdwijnt zodra het echte bod binnen is", async () => {
+    const keypair = new InstanceKeypair();
+    const deadline = overSeconden(3600);
+    const db = new SqlitePersistence(path);
+    const store = new OpenBodStore(undefined, keypair, db);
+    const listing = store.createListing(WONING(deadline));
+
+    db.saveDraft(listing.id, "sub-alice", JSON.stringify({ amount: 505000 }));
+    db.close();
+
+    // Nieuw proces, zelfde bestand: het concept staat er nog.
+    const db2 = new SqlitePersistence(path);
+    const store2 = new OpenBodStore(undefined, keypair, db2);
+    expect(JSON.parse(db2.loadDraft(listing.id, "sub-alice")!.json).amount).toBe(505000);
+
+    // En het is van deze bieder alleen.
+    expect(db2.loadDraft(listing.id, "sub-bob")).toBeUndefined();
+
+    // Zodra het verzegelde bod binnen is, hoort het leesbare concept weg. In de
+    // API doet `POST /listings/:id/bids` dat; hier de opslagkant ervan.
+    const sealed = await sealBid({ amount: 505000, conditions: [], takeover: [] }, deadline);
+    store2.placeBid(listing.id, "sub-alice", sealed.commitment, sealed.ciphertext);
+    db2.deleteDraft(listing.id, "sub-alice");
+    expect(db2.loadDraft(listing.id, "sub-alice")).toBeUndefined();
+
+    // Een concept raakt de keten nooit: alleen listing_opened en bid_placed.
+    expect(store2.getLog(listing.id).map((e) => e.type)).toEqual(["listing_opened", "bid_placed"]);
+  });
+
   it("bedragen staan als hele centen in de database, zodat er exact mee te rekenen valt", async () => {
     const keypair = new InstanceKeypair();
     const deadline = overSeconden(4);

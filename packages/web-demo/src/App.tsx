@@ -16,7 +16,6 @@ import { BeheerNieuw } from "./pages/BeheerNieuw";
 import { BeheerWoning } from "./pages/BeheerWoning";
 import { Uitleg } from "./pages/Uitleg";
 import { clearToken, getToken } from "./lib/api";
-import { clearAllConcepten } from "./lib/concept";
 import { Demobanner } from "./components/Demobanner";
 import { Onveiligebanner } from "./components/Onveiligebanner";
 
@@ -62,10 +61,10 @@ function App() {
                 size="small"
                 color="inherit"
                 onClick={() => {
+                  // Het concept hangt aan het account en niet aan deze browser,
+                  // dus na uitloggen ziet de volgende gebruiker op een gedeeld
+                  // apparaat niets meer van het halve bod van de vorige.
                   clearToken();
-                  // Op een gedeeld apparaat hoort een half ingevuld bod niet te
-                  // blijven staan voor de volgende gebruiker.
-                  clearAllConcepten();
                   window.location.reload();
                 }}
               >

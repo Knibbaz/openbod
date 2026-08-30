@@ -51,6 +51,21 @@ export interface Persistence {
   saveLogbook(listingId: string, logbook: Logbook): void;
   saveDelivery(delivery: DeliveryResult): void;
 
+  /**
+   * Voorbereide, nog niet verzegelde biedingen (concepten). Bewust géén deel
+   * van `OpenBodStore` en géén regel in de hashketen: een concept is geen bod,
+   * het telt nergens mee en het hoort de procedure niet aan te raken.
+   *
+   * Wat hier ligt, is leesbaar voor wie de instantie beheert, inclusief het
+   * bedrag. Dat is een bewuste afweging tegen het alternatief (alleen in de
+   * browser, dus weg bij een nieuw apparaat), en het is de reden dat er
+   * nergens een endpoint mag komen dat aantallen of andermans concepten
+   * teruggeeft. Zie DEVELOPMENT.md, bekende beperkingen.
+   */
+  saveDraft(listingId: string, bidderSub: string, json: string): void;
+  loadDraft(listingId: string, bidderSub: string): { json: string; savedAt: string } | undefined;
+  deleteDraft(listingId: string, bidderSub: string): void;
+
   /** Alles wissen. Bestaat voor de demo-instantie; zie `OpenBodStore.clear`. */
   clear(): void;
 
@@ -71,6 +86,11 @@ export class NoPersistence implements Persistence {
   saveRevealed(): void {}
   saveLogbook(): void {}
   saveDelivery(): void {}
+  saveDraft(): void {}
+  loadDraft(): undefined {
+    return undefined;
+  }
+  deleteDraft(): void {}
   clear(): void {}
   close(): void {}
 }

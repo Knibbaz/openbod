@@ -67,6 +67,17 @@ CREATE TABLE IF NOT EXISTS deliveries (
   json       TEXT NOT NULL
 );
 
+-- Voorbereide, nog niet verzegelde biedingen. Staat los van listings en heeft
+-- bewust geen foreign key naar log_entries: een concept is geen bod en mag de
+-- keten niet raken. Eén concept per bieder per woning.
+CREATE TABLE IF NOT EXISTS bid_drafts (
+  listing_id TEXT NOT NULL,
+  bidder_sub TEXT NOT NULL,
+  json       TEXT NOT NULL,
+  saved_at   TEXT NOT NULL,
+  PRIMARY KEY (listing_id, bidder_sub)
+);
+
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 
 CREATE INDEX IF NOT EXISTS sealed_bids_listing ON sealed_bids(listing_id);
@@ -85,6 +96,9 @@ export class SqlitePersistence implements Persistence {
     deleteRevealed: StatementSync;
     saveLogbook: StatementSync;
     saveDelivery: StatementSync;
+    saveDraft: StatementSync;
+    loadDraft: StatementSync;
+    deleteDraft: StatementSync;
   };
   private depth = 0;
 
@@ -121,6 +135,12 @@ export class SqlitePersistence implements Persistence {
       saveDelivery: this.db.prepare(
         "INSERT INTO deliveries (listing_id, json) VALUES (?, ?) ON CONFLICT(listing_id) DO UPDATE SET json = excluded.json",
       ),
+      saveDraft: this.db.prepare(
+        "INSERT INTO bid_drafts (listing_id, bidder_sub, json, saved_at) VALUES (?, ?, ?, ?) " +
+          "ON CONFLICT(listing_id, bidder_sub) DO UPDATE SET json = excluded.json, saved_at = excluded.saved_at",
+      ),
+      loadDraft: this.db.prepare("SELECT json, saved_at FROM bid_drafts WHERE listing_id = ? AND bidder_sub = ?"),
+      deleteDraft: this.db.prepare("DELETE FROM bid_drafts WHERE listing_id = ? AND bidder_sub = ?"),
     };
   }
 
@@ -275,10 +295,25 @@ export class SqlitePersistence implements Persistence {
     this.stmt.saveDelivery.run(delivery.listingId, canonicalize(delivery));
   }
 
+  saveDraft(listingId: string, bidderSub: string, json: string): void {
+    this.stmt.saveDraft.run(listingId, bidderSub, json, new Date().toISOString());
+  }
+
+  loadDraft(listingId: string, bidderSub: string): { json: string; savedAt: string } | undefined {
+    const row = this.stmt.loadDraft.get(listingId, bidderSub) as
+      | { json: string; saved_at: string }
+      | undefined;
+    return row ? { json: row.json, savedAt: row.saved_at } : undefined;
+  }
+
+  deleteDraft(listingId: string, bidderSub: string): void {
+    this.stmt.deleteDraft.run(listingId, bidderSub);
+  }
+
   clear(): void {
     this.transaction(() => {
       // listings als laatste: de rest hangt er met een foreign key aan.
-      for (const table of ["log_entries", "sealed_bids", "revealed_bids", "logbooks", "deliveries", "listings"]) {
+      for (const table of ["log_entries", "sealed_bids", "revealed_bids", "logbooks", "deliveries", "bid_drafts", "listings"]) {
         this.db.exec(`DELETE FROM ${table}`);
       }
     });

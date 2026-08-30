@@ -20,6 +20,8 @@ import {
   abortBody,
   awardBody,
   awardResponse,
+  bidDraftBody,
+  bidDraftResponse,
   bidParams,
   createListingBody,
   deliveryResponse,
@@ -149,7 +151,7 @@ const app = Fastify({
 await app.register(helmet, { contentSecurityPolicy: false });
 await app.register(cors, {
   origin: ALLOWED_ORIGINS,
-  methods: ["GET", "POST", "PATCH", "DELETE"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
 });
 await app.register(rateLimit, {
   max: 300,
@@ -297,6 +299,9 @@ app.post(
         parsed.data.ciphertext,
         parsed.data.identityEnvelope,
       );
+      // Het concept heeft zijn werk gedaan en is nu het enige leesbare spoor van
+      // een bod dat verder verzegeld is. Meteen weg.
+      persistence.deleteDraft(params.id, sub);
       return sendValidated(reply, receiptResponse, receipt, 201);
     } catch (err) {
       return handleDomainError(err, reply);
@@ -449,6 +454,65 @@ app.get("/listings/:id/delivery", async (req, reply) => {
     const delivery = store.logbookDelivery(params.id);
     if (!delivery) return reply.status(404).send({ error: "logboek is nog niet verstuurd" });
     return sendValidated(reply, deliveryResponse, delivery);
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
+
+/**
+ * Het eigen concept ophalen, bewaren en weggooien.
+ *
+ * Uitsluitend het eigen concept: de sub komt uit het token en nooit uit de URL,
+ * dus er is geen manier om dat van een ander op te vragen. Er is met opzet ook
+ * geen endpoint dat telt hoeveel concepten er voor een woning klaarstaan. Dat
+ * getal zou een makelaar precies vertellen hoeveel belangstelling er is voordat
+ * de inschrijving sluit, en dat is de informatievoorsprong die dit project
+ * afschaft.
+ */
+app.get("/listings/:id/draft", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    const sub = await requireIdentity(req);
+    const stored = persistence.loadDraft(params.id, sub);
+    if (!stored) return reply.status(404).send({ error: "geen concept van deze bieder" });
+    return sendValidated(reply, bidDraftResponse, {
+      ...(JSON.parse(stored.json) as unknown as Record<string, unknown>),
+      savedAt: stored.savedAt,
+    });
+  } catch (err) {
+    return handleDomainError(err, reply);
+  }
+});
+
+app.put(
+  "/listings/:id/draft",
+  { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+  async (req, reply) => {
+    const params = parseParamsOr400(listingIdParams, req.params, reply);
+    if (!params) return;
+    const parsed = bidDraftBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: parsed.error.flatten() });
+    try {
+      const sub = await requireIdentity(req);
+      // De woning moet bestaan; een concept voor niets bewaren maakt van dit
+      // endpoint een gratis opslagplek.
+      store.getListing(params.id);
+      persistence.saveDraft(params.id, sub, JSON.stringify(parsed.data));
+      return reply.status(204).send();
+    } catch (err) {
+      return handleDomainError(err, reply);
+    }
+  },
+);
+
+app.delete("/listings/:id/draft", async (req, reply) => {
+  const params = parseParamsOr400(listingIdParams, req.params, reply);
+  if (!params) return;
+  try {
+    const sub = await requireIdentity(req);
+    persistence.deleteDraft(params.id, sub);
+    return reply.status(204).send();
   } catch (err) {
     return handleDomainError(err, reply);
   }

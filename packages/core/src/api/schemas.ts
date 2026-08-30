@@ -35,6 +35,44 @@ export const sealedBidBody = z
 export const awardBody = z.object({ bidId: uuidSchema }).strict();
 
 /**
+ * Een concept: een voorbereid, nog niet verzegeld bod.
+ *
+ * Let op wat dit is en niet is. Een concept telt nergens mee, staat niet in de
+ * hashketen en is geen bod; pas het verzegelde bod op `POST /listings/:id/bids`
+ * is dat. Dit is invulhulp, zodat iemand die morgen verder wil niet opnieuw
+ * hoeft te beginnen.
+ *
+ * En let op wat het kost: anders dan een verzegeld bod is dit leesbaar voor wie
+ * de instantie beheert, inclusief het bedrag. Daarom is er uitsluitend toegang
+ * tot je eigen concept en bestaat er nergens een endpoint dat aantallen of
+ * andermans concepten teruggeeft. Zie DEVELOPMENT.md, bekende beperkingen.
+ */
+export const bidDraftBody = z
+  .object({
+    amount: z.number().finite().nonnegative().max(1_000_000_000),
+    motivation: safeText(2_000).default(""),
+    handoverDate: z.string().max(40).default(""),
+    validUntil: z.string().max(40).default(""),
+    conditions: z
+      .record(
+        z.object({
+          selected: z.boolean(),
+          deadline: z.string().max(40).default(""),
+          note: safeText(500).default(""),
+        }),
+      )
+      .default({}),
+    takeover: z
+      .record(z.object({ choice: z.string().max(40), amount: z.string().max(40).default("") }))
+      .default({}),
+    bidderName: safeText(200).default(""),
+    bidderContact: safeText(200).default(""),
+  })
+  .strict();
+
+export const bidDraftResponse = bidDraftBody.extend({ savedAt: z.string() });
+
+/**
  * Afhandeling buiten de procedure om (E7-S2). De reden is verplicht en komt
  * onverkort in het openbare logboek, dus zij is een procedurele verklaring,
  * geen plek voor persoonsgegevens over bieders.
