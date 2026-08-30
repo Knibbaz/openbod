@@ -31,13 +31,36 @@ PUBLIC_URL=http://localhost:8080 docker compose -f deploy/docker-compose.yml up 
 ## Achter een Caddy die er al staat
 
 Draait er al een Caddy-container voor andere sites, dan hoeft die van jou niets
-te weten van poorten: zet hem op hetzelfde Docker-netwerk en verwijs naar de
-containernaam.
+te weten van poorten: zet deze stack op het netwerk van die proxy en verwijs naar
+de containernaam.
+
+Zoek eerst op hoe dat netwerk bij Docker heet. Compose zet het projectvoorvoegsel
+ervoor, dus een `routd-network` in `routd-app/docker-compose.yaml` heet
+`routd-app_routd-network`:
 
 ```
-# eenmalig: de bestaande Caddy toegang geven tot het netwerk van deze stack
-docker network connect openbod-demo_default caddy
+docker network ls
 ```
+
+Zet die naam in `deploy/.env` en start met het extra bestand erbij:
+
+```
+PROXY_NETWORK=routd-app_routd-network
+```
+
+```
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.proxy.yml \
+  --env-file deploy/.env up -d
+```
+
+Dat bestand zet de webcontainer op beide netwerken en haalt de poortmapping weg,
+want die is dan overbodig. Neem het bij elke `up -d` en `pull` mee, anders valt
+de stack terug op de gewone opzet en kan de proxy hem niet meer vinden.
+
+`docker network connect caddy ...` doet hetzelfde in één commando, maar die
+verbinding leg je met de hand en hij is weg zodra de proxycontainer opnieuw
+wordt aangemaakt. Dan staat je site er ineens uit zonder dat je iets aan
+openbod veranderd hebt.
 
 En in het Caddyfile:
 
@@ -70,11 +93,11 @@ Wijkt hij af, dan weigert de core elk token en kan niemand bieden. Zonder
 `DEMO_INSTANCE=true` kan op een demo-instantie niemand inloggen, want er is geen
 mailserver om de magic link te versturen.
 
-De poortmapping (`BIND_ADDRESS`, `PUBLIC_PORT`) mag blijven staan maar is dan
-overbodig: het verkeer loopt over het Docker-netwerk en niet over de host. Zet
-`BIND_ADDRESS` in elk geval nooit op `0.0.0.0` als er een proxy voor staat, want
-dan is de instantie ook rechtstreeks over http bereikbaar, langs je certificaat
-heen.
+De poortmapping (`BIND_ADDRESS`, `PUBLIC_PORT`) doet in deze opzet niets meer:
+`docker-compose.proxy.yml` haalt hem weg omdat het verkeer over het Docker-netwerk
+loopt. Gebruik je die opzet niet, laat `BIND_ADDRESS` dan op `127.0.0.1` staan en
+nooit op `0.0.0.0`, want dan is de instantie ook rechtstreeks over http bereikbaar,
+langs je certificaat heen.
 
 ## Bijwerken: images ophalen of zelf bouwen
 
