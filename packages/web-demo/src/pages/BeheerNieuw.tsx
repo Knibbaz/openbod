@@ -20,6 +20,7 @@ import DeleteIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import KeyIcon from "@mui/icons-material/VpnKeyOutlined";
 import { coreApi, type Energielabel, type OvernameStatus } from "../lib/api";
 import { generateSellerKeypair, saveSellerKey } from "../lib/identity-envelope";
+import { useDemoModus } from "../lib/demo";
 import { Adreszoeker } from "../components/Adreszoeker";
 import { Fotogalerij } from "../components/Fotogalerij";
 import { STANDAARDZAKEN, alleStandaardzaken } from "../lib/standaardzaken";
@@ -62,6 +63,13 @@ function standaardSluiting(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
 }
 
+/** Over zoveel minuten, in het formaat dat `datetime-local` wil. */
+function overMinuten(minuten: number): string {
+  const d = new Date(Date.now() + minuten * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Getalveld dat leeg mag blijven; lege kenmerken horen niet als 0 in het dossier. */
 function optioneelGetal(waarde: string): number | undefined {
   const n = Number(waarde);
@@ -92,6 +100,7 @@ export function BeheerNieuw() {
   const [items, setItems] = useState<ItemDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const demo = useDemoModus();
 
   // Eén URL per regel is voor een makelaar met een bestaande fotoreeks het
   // snelste; deze instantie host zelf geen bestanden.
@@ -102,6 +111,39 @@ export function BeheerNieuw() {
 
   function setItem(index: number, patch: Partial<ItemDraft>) {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  /**
+   * Een voorbeeldwoning invullen, alleen op een demo-instantie. Bestaat omdat de
+   * beheerkant anders onzichtbaar blijft voor een bezoeker: de demowoningen zijn
+   * door de instantie klaargezet, dus hun sleutel zit in geen enkele browser en
+   * ze verschijnen nergens in het beheeroverzicht.
+   *
+   * De sluitingstijd staat op vijf minuten. Dat is voor een echte verkoop
+   * onzinnig kort, maar hier is het de bedoeling: zo maakt een bezoeker binnen
+   * één bezoek de hele gang mee, van biedfase naar onthulling naar gunning.
+   */
+  function vulVoorbeeldwoning() {
+    setAddress("Proefstraat 7, Vriezenveen");
+    setPrijsVorm("vraagprijs");
+    setAskingPrice("455000");
+    setVerkoopmethode("inschrijving");
+    setSluiting(overMinuten(5));
+    setOmschrijving(
+      "Verzonnen woning om de beheerkant te laten zien. Vrijstaand, rustige straat, tuin op het zuiden. " +
+        "Dit huis bestaat niet en staat nergens te koop.",
+    );
+    setWoonoppervlak("128");
+    setPerceel("410");
+    setKamers("5");
+    setSlaapkamers("3");
+    setBouwjaar("1974");
+    setEnergielabel("C");
+    setItems([
+      { label: "Gordijnen woonkamer", status: "in_overleg", amount: "" },
+      { label: "Zonwering achterzijde", status: "gevraagd_bedrag", amount: "450" },
+      { label: "Vaatwasser", status: "blijft_achter", amount: "" },
+    ]);
   }
 
   /** Zet de standaardlijst neer, zonder weg te gooien wat er al staat. */
@@ -171,6 +213,25 @@ export function BeheerNieuw() {
   return (
     <Stack component="form" onSubmit={(e: FormEvent) => onSubmit(e, true)} spacing={3}>
       <Typography variant="h1">Woning klaarzetten</Typography>
+
+      {demo && (
+        <Alert
+          severity="info"
+          action={
+            <Button color="inherit" size="small" onClick={vulVoorbeeldwoning}>
+              Vul een voorbeeld in
+            </Button>
+          }
+        >
+          <AlertTitle>Dit is de kant van de makelaar en de verkoper</AlertTitle>
+          <Typography variant="body2">
+            Wil je snel zien hoe het verloopt zonder alles te typen? Vul een voorbeeldwoning in met een sluitingstijd
+            over vijf minuten. Breng er daarna zelf een bod op uit vanaf de woningpagina, en je ziet het hele verloop:
+            tot de sluitingstijd zie je hier geen enkel bedrag, daarna gaan de biedingen open, en pas als je gunt wordt
+            de naam van de bieder leesbaar. Met jouw sleutel, die deze website niet heeft.
+          </Typography>
+        </Alert>
+      )}
 
       <Alert severity="info" icon={<KeyIcon fontSize="inherit" />}>
         <AlertTitle>Dit apparaat maakt zo een sleutel aan</AlertTitle>

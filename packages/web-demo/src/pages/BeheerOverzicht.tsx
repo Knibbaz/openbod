@@ -9,8 +9,11 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import AddHomeIcon from "@mui/icons-material/AddHomeOutlined";
+import KeyIcon from "@mui/icons-material/KeyOutlined";
+import AlertTitle from "@mui/material/AlertTitle";
 import { coreApi, type Listing } from "../lib/api";
 import { listSellerKeyListingIds } from "../lib/identity-envelope";
+import { useDemoModus } from "../lib/demo";
 import { StatusChip } from "../components/StatusChip";
 
 /**
@@ -26,6 +29,7 @@ import { StatusChip } from "../components/StatusChip";
 export function BeheerOverzicht() {
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const demo = useDemoModus();
 
   useEffect(() => {
     const eigen = listSellerKeyListingIds();
@@ -58,6 +62,24 @@ export function BeheerOverzicht() {
       </Stack>
 
       {error && <Alert severity="error">{error}</Alert>}
+
+      {demo && (
+        <Alert severity="info" icon={<KeyIcon fontSize="inherit" />}>
+          <AlertTitle>Waarom de demowoningen hier niet staan</AlertTitle>
+          <Typography variant="body2">
+            De vijf woningen op de voorpagina zijn door deze instantie zelf klaargezet. Hun verkopersleutel bestaat
+            dus in geen enkele browser, ook niet in die van jou, en daarom kan niemand ze hier beheren. Dat is geen
+            gebrek van de demo maar het ontwerp: wie de sleutel niet heeft, kan de identiteit van een bieder niet
+            openen, en dat geldt ook voor de website zelf.
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 0.5 }}>
+            Wil je zien wat een makelaar en een verkoper zien, zet dan zelf een woning klaar. De sleutel ontstaat dan
+            in jouw browser. Kies een sluitingstijd van een paar minuten, breng er zelf een bod op uit, en je maakt
+            het hele verloop mee: de biedfase waarin je als makelaar geen enkel bedrag ziet, het openen op de
+            sluitingstijd, de gunning, en het moment waarop de naam van de bieder leesbaar wordt.
+          </Typography>
+        </Alert>
+      )}
 
       {listings?.some(wachtOpActie) && (
         <Alert severity="info">
