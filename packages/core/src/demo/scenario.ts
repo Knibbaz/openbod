@@ -1,6 +1,9 @@
 import { sealBid } from "../commit/seal.js";
 import type { CreateListingInput, OpenBodStore } from "../store.js";
 import type { BidPayload } from "../model/types.js";
+import { maakLogger } from "../logging/logger.js";
+
+const log = maakLogger("demo");
 
 /**
  * Het demoscenario: een instantie die zichzelf elk half uur terugzet.
@@ -207,7 +210,7 @@ async function seed(store: OpenBodStore): Promise<void> {
       // dat zou doen.
       void (async () => {
         if (!(await wachtOpStatus(store, aangemaakt.id, "onthuld"))) {
-          console.warn(`[demo] ${aangemaakt.address} is niet op tijd onthuld; niet gegund`);
+          log.warn("niet op tijd onthuld, dus niet gegund", { woning: aangemaakt.address });
           return;
         }
         try {
@@ -215,12 +218,12 @@ async function seed(store: OpenBodStore): Promise<void> {
           const beste = [...logboek.entries].filter((e) => e.valid).sort((a, b) => b.amount - a.amount)[0];
           if (beste) store.awardListing(aangemaakt.id, beste.bidId);
         } catch (err) {
-          console.warn(`[demo] gunnen van ${aangemaakt.address} overgeslagen`, err);
+          log.warn("gunnen overgeslagen", { woning: aangemaakt.address, fout: String(err) });
         }
       })();
     }
   }
-  console.log(`[demo] scenario klaargezet, volgende reset om ${demoStatus().resetOp}`);
+  log.info("scenario klaargezet", { volgendeReset: demoStatus().resetOp });
 }
 
 /**
@@ -232,7 +235,7 @@ export function startDemo(store: OpenBodStore): void {
   setInterval(() => {
     gestartOp = new Date();
     store.clear();
-    console.log("[demo] alles teruggezet, scenario begint opnieuw");
+    log.info("alles teruggezet, scenario begint opnieuw");
     void seed(store);
   }, CYCLUS_MS);
 }

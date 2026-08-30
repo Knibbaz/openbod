@@ -1,6 +1,9 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { maakLogger } from "./logger.js";
+
+const log = maakLogger("identity");
 
 /**
  * De koppeling van een pseudonieme sub naar een e-mailadres. Dit is de enige
@@ -67,17 +70,17 @@ export class SqliteSubjectStore implements SubjectStore {
  */
 export function buildSubjectStore(demoMode: boolean): SubjectStore {
   if (demoMode) {
-    console.log("[identity] DEMO-modus: e-mailadressen worden niet bewaard.");
+    log.info("DEMO-modus: e-mailadressen worden niet bewaard");
     return new MemorySubjectStore();
   }
   const path = process.env.IDENTITY_DB_PATH?.trim() || "./data/identity.db";
   if (path === ":memory:") {
-    console.warn(
-      "[identity] WAARSCHUWING: IDENTITY_DB_PATH=:memory:, dus na een herstart kan het biedlogboek " +
-        "niet bezorgd worden aan wie niet opnieuw inlogt.",
+    log.warn(
+      "IDENTITY_DB_PATH=:memory:, dus na een herstart kan het biedlogboek niet bezorgd worden aan wie " +
+        "niet opnieuw inlogt.",
     );
     return new MemorySubjectStore();
   }
-  console.log(`[identity] bekende subjects worden bewaard in ${path}`);
+  log.info("bekende subjects worden bewaard", { pad: path });
   return new SqliteSubjectStore(path);
 }

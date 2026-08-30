@@ -53,6 +53,8 @@ services:
       # Zonder deze kan het biedlogboek na een herstart niet bezorgd worden aan
       # wie sindsdien niet opnieuw inlogde.
       IDENTITY_DB_PATH: ${IDENTITY_DB_PATH:-/data/identity.db}
+      # Hoeveel er in het serverlog komt; gevoelige gegevens nooit. Zie .env.example.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       TRUST_PROXY: "true"
     restart: unless-stopped
     volumes:
@@ -97,6 +99,8 @@ services:
       # deze wist elke herstart alles, en houdt een bieder een ondertekend
       # ontvangstbewijs vast voor een bod dat niet meer bestaat.
       CORE_DB_PATH: ${CORE_DB_PATH:-/data/openbod.db}
+      # Hoeveel er in het serverlog komt; gevoelige gegevens nooit. Zie .env.example.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       TRUST_PROXY: "true"
     depends_on:
       identity:

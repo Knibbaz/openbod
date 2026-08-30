@@ -1,4 +1,7 @@
 import type { Logbook } from "./logbook.js";
+import { maakLogger } from "../logging/logger.js";
+
+const log = maakLogger("core");
 
 /**
  * Automatische verstrekking van het biedlogboek (E4-S3).
@@ -58,10 +61,14 @@ export class HttpLogbookDelivery implements LogbookDelivery {
  */
 export class ConsoleLogbookDelivery implements LogbookDelivery {
   async deliver(request: DeliveryRequest): Promise<void> {
-    console.warn(
-      `[core] GEEN bezorgkanaal geconfigureerd: logboek van listing ${request.listingId} ` +
-        `(root ${request.logbook.rootHash.slice(0, 12)}...) zou naar ${request.recipients.length} ` +
-        `betrokkene(n) gaan. Zet CORE_DELIVERY_ENDPOINT om het echt te versturen.`,
+    log.warn(
+      "GEEN bezorgkanaal geconfigureerd, het logboek wordt feitelijk niet verstrekt. " +
+        "Zet CORE_DELIVERY_ENDPOINT om het echt te versturen.",
+      {
+        listingId: request.listingId,
+        root: request.logbook.rootHash.slice(0, 12),
+        ontvangers: request.recipients.length,
+      },
     );
   }
 }

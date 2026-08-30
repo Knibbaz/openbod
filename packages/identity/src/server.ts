@@ -8,6 +8,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { loadKeys } from "./keys.js";
 import { deriveSubject, loadSubjectPepper } from "./subject.js";
 import { buildSubjectStore } from "./subjects.js";
+import { maakLogger } from "./logger.js";
 
 /**
  * Identity-backend: authenticatie via magic link, geeft een OIDC-stijl JWT
@@ -40,6 +41,9 @@ const APP_BASE_URL = (process.env.APP_BASE_URL ?? "http://localhost:5173").repla
 // Ze bevat uitsluitend verzonnen woningen en is geen productiesysteem: zet dit
 // nooit aan op een instantie waar echte biedingen op binnenkomen.
 const DEMO_MODE = process.env.IDENTITY_DEMO_MODE === "true";
+
+/** Serverlog voor de beheerder. Zie `logger.ts` voor wat er nooit in komt. */
+const log = maakLogger("identity");
 const EXPOSE_DEV_LINK = !IS_PRODUCTION || DEMO_MODE;
 
 const ALLOWED_ORIGINS = (process.env.IDENTITY_ALLOWED_ORIGINS ?? "http://localhost:5173")
@@ -91,13 +95,13 @@ try {
   // Een operator die dit fout heeft staan, moet weten wát er mis is en hoe het
   // moet, niet een stacktrace hoeven lezen. Doorstarten is geen optie: dan zou
   // deze instantie stilletjes zwakkere pseudoniemen uitdelen dan zij belooft.
-  console.error(`[identity] kan niet starten: ${err instanceof Error ? err.message : String(err)}`);
+  log.fatal("kan niet starten", { reden: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 }
 if (!process.env.IDENTITY_SUBJECT_PEPPER) {
-  console.warn(
-    "[identity] geen IDENTITY_SUBJECT_PEPPER gezet: er is een vluchtige gegenereerd. " +
-      "Subjects veranderen bij elke herstart, dus eerdere biedingen zijn niet meer aan een gebruiker te koppelen.",
+  log.warn(
+    "geen IDENTITY_SUBJECT_PEPPER gezet, er is een vluchtige gegenereerd. Subjects veranderen bij elke " +
+      "herstart, dus eerdere biedingen zijn niet meer aan een gebruiker te koppelen.",
   );
 }
 
@@ -112,11 +116,11 @@ await app.register(cors, { origin: ALLOWED_ORIGINS, methods: ["GET", "POST"] });
 await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
 
 if (IS_PRODUCTION && DEMO_MODE) {
-  console.warn("[identity] DEMO-instantie: magic-link-token staat in de API-response. Iedereen kan inloggen als elk e-mailadres. Alleen voor de publieke demo.");
+  log.warn("DEMO-instantie: magic-link-token staat in de API-response. Iedereen kan inloggen als elk e-mailadres. Alleen voor de publieke demo.");
 } else if (IS_PRODUCTION) {
-  console.log("[identity] productiemodus: magic links worden niet in de response getoond, alleen gemaild.");
+  log.info("productiemodus: magic links worden niet in de response getoond, alleen gemaild");
 } else {
-  console.warn("[identity] dev-modus: magic-link-token staat in de API-response (EXPOSE_DEV_LINK). Nooit zo in productie draaien.");
+  log.warn("dev-modus: magic-link-token staat in de API-response (EXPOSE_DEV_LINK). Nooit zo in productie draaien.");
 }
 
 app.get("/.well-known/jwks.json", async () => ({ keys: [keys.publicJwk] }));
@@ -137,7 +141,12 @@ app.post(
     // productie gaat dit uitsluitend per e-mail, nooit via de response of
     // de serverlog (die zou dan een credential-log zijn).
     if (EXPOSE_DEV_LINK) {
-      console.log(`[identity] magic link voor ${body.data.email}: ${link}`);
+      // Bewuste uitzondering op de regel dat gevoelige gegevens niet in het log
+      // komen: hier stáát het adres en het token in de tekst. Dat is de
+      // demo-vervanging voor een mailserver en het kan alleen met
+      // EXPOSE_DEV_LINK aan. Zie de bekende beperkingen; op warn, want dit is
+      // geen normale bedrijfsvoering.
+      log.warn(`DEMO, geen mailserver: magic link voor ${body.data.email}: ${link}`);
       return { message: "magic link verstuurd (zie serverlog in deze demo)", devLink: link, devToken: token };
     }
     return { message: "als dit e-mailadres bekend is, is er een magic link verstuurd" };
@@ -241,9 +250,12 @@ function secretMatches(provided: string): boolean {
  */
 function sendLogbookMail(email: string, listingId: string, logbook: Record<string, unknown>) {
   const rootHash = typeof logbook.rootHash === "string" ? logbook.rootHash : "onbekend";
-  console.log(
-    `[identity] biedlogboek van listing ${listingId} (root ${rootHash.slice(0, 12)}...) ` +
-      `naar ${email}. DEMO: niet echt gemaild, geen mailserver geconfigureerd.`,
+  // Tweede en laatste bewuste uitzondering: het adres staat in de tekst omdat
+  // dit de plek van de mailer inneemt. Een productie-instantie vervangt deze
+  // functie door een echte verzending en dan verdwijnt het adres uit het log.
+  log.warn(
+    `DEMO, niet echt gemaild: biedlogboek van listing ${listingId} ` +
+      `(root ${rootHash.slice(0, 12)}...) naar ${email}`,
   );
 }
 
@@ -256,8 +268,8 @@ setInterval(() => {
 
 app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   if (err) {
-    console.error(err);
+    log.fatal("kan niet starten", { fout: String(err) });
     process.exit(1);
   }
-  console.log(`[identity] luistert op ${address}`);
+  log.info("luistert", { adres: address, logniveau: log.niveau });
 });

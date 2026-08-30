@@ -12,6 +12,7 @@ import {
 } from "../store.js";
 import { NoPersistence, type Persistence } from "../persistence/port.js";
 import { SqlitePersistence } from "../persistence/sqlite.js";
+import { maakLogger } from "../logging/logger.js";
 import { ConsoleLogbookDelivery, HttpLogbookDelivery, type LogbookDelivery } from "../logbook/delivery.js";
 import { verifyIdentityToken } from "./identity.js";
 import { demoStatus, startDemo } from "../demo/scenario.js";
@@ -49,6 +50,9 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
  */
 const DEMO_MODE = process.env.CORE_DEMO === "true";
 
+/** Serverlog voor de beheerder. Zie `logging/logger.ts` voor wat er nooit in komt. */
+const log = maakLogger("core");
+
 // Standaard alleen de lokale demo-frontend. In productie moet dit expliciet
 // naar het echte domein van de deployment wijzen: geen wildcard-CORS voor
 // een API die met een bearer-token authenticeert.
@@ -68,9 +72,8 @@ function buildDeliveryChannel(): LogbookDelivery {
   const secret = process.env.DELIVERY_SHARED_SECRET;
   if (!endpoint || !secret) {
     if (IS_PRODUCTION) {
-      console.warn(
-        "[core] WAARSCHUWING: CORE_DELIVERY_ENDPOINT of DELIVERY_SHARED_SECRET ontbreekt. " +
-          "Biedlogboeken worden NIET automatisch verstrekt (E4-S3).",
+      log.warn(
+        "CORE_DELIVERY_ENDPOINT of DELIVERY_SHARED_SECRET ontbreekt, biedlogboeken worden NIET automatisch verstrekt (E4-S3)",
       );
     }
     return new ConsoleLogbookDelivery();
@@ -92,9 +95,9 @@ function buildKeypair(): InstanceKeypair {
   const pem = process.env.CORE_SIGNING_KEY;
   if (!pem?.trim()) {
     if (IS_PRODUCTION) {
-      console.warn(
-        "[core] WAARSCHUWING: CORE_SIGNING_KEY ontbreekt. Er is een tijdelijke sleutel gemaakt, " +
-          "dus eerder verstrekte logboeken en ontvangstbewijzen zijn na deze herstart niet meer te verifieren.",
+      log.warn(
+        "CORE_SIGNING_KEY ontbreekt, er is een tijdelijke sleutel gemaakt. Eerder verstrekte logboeken en " +
+          "ontvangstbewijzen zijn na deze herstart niet meer te verifieren.",
       );
     }
     return new InstanceKeypair();
@@ -112,17 +115,15 @@ function buildKeypair(): InstanceKeypair {
  */
 function buildPersistence(): Persistence {
   if (DEMO_MODE) {
-    console.log("[core] DEMO-modus: niets wordt bewaard, de instantie begint elke ronde leeg.");
+    log.info("DEMO-modus: niets wordt bewaard, de instantie begint elke ronde leeg");
     return new NoPersistence();
   }
   const path = process.env.CORE_DB_PATH?.trim() || "./data/openbod.db";
   if (path === ":memory:") {
-    console.warn(
-      "[core] WAARSCHUWING: CORE_DB_PATH=:memory:, dus deze instantie wist alle biedingen bij een herstart.",
-    );
+    log.warn("CORE_DB_PATH=:memory:, dus deze instantie wist alle biedingen bij een herstart");
     return new NoPersistence();
   }
-  console.log(`[core] biedingen worden bewaard in ${path}`);
+  log.info("biedingen worden bewaard", { pad: path });
   return new SqlitePersistence(path);
 }
 
@@ -586,7 +587,7 @@ function handleDomainError(err: unknown, reply: FastifyReply) {
   }
   // Nooit de ruwe fout (met stack trace of interne details) naar de client.
   app.log.error(err);
-  console.error(err);
+  log.error("interne fout", { fout: String(err) });
   return reply.status(500).send({ error: "interne fout" });
 }
 
@@ -596,7 +597,7 @@ app.setErrorHandler((err: FastifyError, _req, reply) => {
   if (err.statusCode && err.statusCode < 500) {
     return reply.status(err.statusCode).send({ error: err.message });
   }
-  console.error(err);
+  log.error("interne fout", { fout: String(err) });
   return reply.status(500).send({ error: "interne fout" });
 });
 
@@ -629,38 +630,36 @@ async function tick() {
     if (listing.status === "gesloten") {
       try {
         await store.revealListing(listing.id);
-        console.log(`[core] listing ${listing.id} automatisch onthuld`);
+        log.info("woning automatisch onthuld", { listingId: listing.id });
       } catch (err) {
-        console.error(`[core] onthulling van ${listing.id} mislukt, probeer opnieuw`, err);
+        log.warn("onthulling mislukt, wordt opnieuw geprobeerd", { listingId: listing.id, fout: String(err) });
       }
     }
     const isEindstatus = listing.status === "onherroepelijk" || listing.status === "buiten_procedure";
     if (isEindstatus && !store.logbookDelivery(listing.id)) {
       try {
         const delivery = await store.deliverLogbook(listing.id);
-        console.log(
-          `[core] biedlogboek van ${listing.id} verstuurd naar ${delivery.recipientRefs.length} betrokkene(n)`,
-        );
+        log.info("biedlogboek verstuurd", { listingId: listing.id, ontvangers: delivery.recipientRefs.length });
       } catch (err) {
-        console.error(`[core] versturen van logboek ${listing.id} mislukt, probeer opnieuw`, err);
+        log.warn("versturen van logboek mislukt, wordt opnieuw geprobeerd", { listingId: listing.id, fout: String(err) });
       }
     }
   }
 }
 
 if (DEMO_MODE) {
-  console.log("[core] DEMO-modus: de instantie vult zichzelf en wist zichzelf elk half uur.");
+  log.info("DEMO-modus: de instantie vult zichzelf en wist zichzelf elk half uur");
   startDemo(store);
 }
 
 if (IS_PRODUCTION && ALLOWED_ORIGINS.includes("http://localhost:5173") && ALLOWED_ORIGINS.length === 1) {
-  console.warn("[core] WAARSCHUWING: NODE_ENV=production maar CORE_ALLOWED_ORIGINS is niet gezet, gebruikt dev-default.");
+  log.warn("NODE_ENV=production maar CORE_ALLOWED_ORIGINS is niet gezet, dev-default wordt gebruikt");
 }
 
 app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   if (err) {
-    console.error(err);
+    log.fatal("kan niet starten", { fout: String(err) });
     process.exit(1);
   }
-  console.log(`[core] luistert op ${address}`);
+  log.info("luistert", { adres: address, logniveau: log.niveau });
 });

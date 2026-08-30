@@ -197,6 +197,27 @@ Wat een back-up hier extra waard maakt: als je anchoren aanzet (ARCHITECTURE.md
 §6.2), kun je na een herstel aantonen dat wat je hebt teruggezet hetzelfde is
 als wat er stond.
 
+### Het serverlog
+
+`LOG_LEVEL` bepaalt hoeveel er in het log komt: een cijfer van 0 tot en met 6,
+of de naam (`silly`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`). Het
+ingestelde niveau en alles daarboven wordt gelogd, dus `LOG_LEVEL=4` laat alleen
+waarschuwingen en erger zien. Standaard is `info` in productie en `debug`
+daarbuiten.
+
+Wat dit niet doet, en dat is met opzet: het zet geen gevoelige gegevens aan.
+Bedragen, namen, contactgegevens, e-mailadressen, tokens, commitments,
+ciphertexts en sleutels worden op elk niveau weggelaten, ook op `silly`. Sinds
+een concept serverzijdig bewaard wordt, staat het bedrag van een voorbereid bod
+in een request body, en een debug-stand die bodies wegschrijft zou de hele
+belofte omzeilen via een bestand waar niemand naar kijkt tot het te laat is. Er
+staat een test op (`packages/core/test/invariants/logging.test.ts`).
+
+Twee plekken schrijven wel een e-mailadres weg, allebei alleen op een
+demo-instantie en allebei op `warn`: de magic link en de bezorging van het
+biedlogboek. Dat zijn de plaatsvervangers van een mailserver, en ze verdwijnen
+zodra er een echte mailer aan hangt.
+
 ### Analyses
 
 Doe die niet op de instantie die op dat moment biedingen aanneemt: geen zware
