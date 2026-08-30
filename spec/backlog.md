@@ -290,6 +290,66 @@ Testcases:
 - TC5 (beveiliging): na afbreken wordt een nieuw bod geweigerd.
 - TC6 (beveiliging): een reeds gegunde procedure kan niet alsnog als buiten de procedure worden weggeschreven.
 
+### E7-S3 Bekendgemaakte voorkeur van de verkoper
+Als bieder wil ik vooraf weten of de verkoper naast de prijs nog iets anders laat meewegen, zodat ik niet achteraf hoor dat er op gronden gekozen is die ik niet kende.
+
+Verkopers hebben vaak een voorkeur die niet over geld gaat. Een woning waar iemand 35 jaar woonde, gaat liever naar een startend gezin uit het dorp dan naar een belegger. Die voorkeur bestaat nu ook al, maar zij loopt langs de telefoon van de makelaar en is voor niemand controleerbaar. Dat is dezelfde soort onzichtbaarheid als een bod dat na de deadline wordt ingevoerd.
+
+Het systeem hoeft niet te beslissen of zo'n voorkeur mag. Het moet afdwingen dat zij vooraf op tafel ligt en achteraf vastligt. Een bekendgemaakte voorkeur is aanvechtbaar; een verzwegen voorkeur is dat niet.
+
+Twee ontwerpkeuzes die vastliggen en niet ter discussie staan:
+
+- **Geen toegangspoort.** De voorkeur mag nooit bepalen wie mág bieden. Een selectie vooraf geeft de makelaar precies het discretionaire moment terug dat dit project afschaft: "uw motivatie was niet sterk genoeg" is niet te weerleggen. Iedereen biedt; de voorkeur weegt pas bij de gunning.
+- **Geen filter in de software.** De instantie rangschikt niet op voorkeur en berekent geen score. Zij publiceert de tekst en legt de keuze vast. Zodra de software gaat selecteren, wordt zij het instrument en niet de administratie.
+
+Openstaande vraag voordat dit gebouwd wordt: waar loopt de grens met gelijke behandeling? "Starter" en "uit de gemeente" staan niet in de opsomming van de Algemene wet gelijke behandeling, en de leeftijdswet (WGBL) gaat over arbeid en beroepsonderwijs, niet over het aanbieden van een woning. Maar een makelaar handelt in de uitoefening van beroep, en een criterium dat op zichzelf neutraal is kan in een homogene gemeente feitelijk op afkomst selecteren. Dat is indirect onderscheid, en dat is verboden tenzij objectief gerechtvaardigd. Dit hoort door een jurist bekeken te zijn voordat het in een instantie met echte woningen komt; het is niet aan de implementatie om dat te beslissen.
+
+Acceptatiecriteria:
+- De verkoper kan bij het aanmaken een korte, vrije tekst opgeven met wat er naast de prijs meeweegt.
+- Die tekst staat zichtbaar bij de woning en gaat mee in de `dossierHash`, dus zij kan niet achteraf worden verzonnen of bijgesteld.
+- De tekst staat ook in het openbare logboek.
+- Ontbreekt de tekst, dan staat er expliciet dat er geen bekendgemaakte voorkeur is, in plaats van niets.
+- Gunnen aan een ander dan het hoogste geldige bod blijft toegestaan en blijft in de keten staan als `gegund`.
+
+Testcases:
+- TC1: een woning met voorkeurstekst toont die tekst en neemt hem mee in de dossierhash.
+- TC2: de voorkeurstekst wijzigen na het openen levert een andere dossierhash op en is dus aanwijsbaar.
+- TC3: gunning aan het derde bod levert dezelfde logregel op als gunning aan het hoogste.
+- TC4 (beveiliging): er is geen endpoint of veld waarmee een bieder op grond van de voorkeur geweerd kan worden.
+
+### E7-S4 Pseudoniem profiel bij de onthulling
+Als verkoper wil ik bij de onthulling zien wat voor koper er achter een bod zit, zodat ik meer kan afwegen dan alleen het bedrag, zonder dat ik van negen mensen de naam krijg die het huis niet kopen.
+
+Een verkoper die 35 jaar in een huis woonde, wil weten of het naar een bewoner gaat of naar een belegger. Die vraag is legitiem, en zij loopt nu langs de makelaar en is voor niemand controleerbaar.
+
+Het draait op het moment, en er is er maar een die kan:
+
+- **Tijdens de biedfase: nooit.** Dan weet de verkoper, en dus de makelaar, wie er meedoet terwijl biedingen nog aangepast kunnen worden. Dat is precies de informatievoorsprong die dit project afschaft.
+- **Bij de onthulling, voor de gunning: dit kan.** De inschrijving is dicht, alle biedingen liggen open, niets kan nog veranderen. Wat de verkoper dan ziet, kan geen enkel bod meer beinvloeden.
+
+De anonimiteit hoeft dus te duren tot de inschrijving sluit, niet tot de gunning. Dat is een kleinere eis dan er nu staat en zij is verdedigbaar, mits het geen identiteit is.
+
+Want dit is nadrukkelijk **geen identiteit**. Zag de verkoper bij de onthulling alle namen, dan hebben negen afgewezen bieders hun persoonsgegevens aan een vreemde gegeven voor niets. Dat is geen dataminimalisatie. Wat er wel komt is een handvol door de bieder zelf verklaarde kenmerken, verzegeld mee in het bod zoals de motivatie nu ook meegaat.
+
+`eigen bewoning` is het belangrijkste kenmerk en het best te verdedigen: het is de vraag die verkopers echt stellen, het gaat over gedrag en niet over persoon, en er zit beleid achter (opkoopbescherming, zelfbewoningsplicht). De lijst kenmerken hoort kort en vast te liggen; een vrij veld wordt vanzelf een plek waar mensen hun achternaam invullen.
+
+Openstaande vragen:
+- Welke kenmerken precies? Voorstel om klein te beginnen: eigen bewoning ja/nee, financiering rond ja/nee/aangevraagd, en of de bieder eerst een woning moet verkopen. Alles wat verder gaat richting gezinssamenstelling of leeftijd hoort eerst langs een jurist, zie E7-S3.
+- Zijn de kenmerken zelfverklaard en verder ongetoetst? Waarschijnlijk wel, en dan hoort er ook te staan dat het een verklaring is en geen bewijs.
+
+Acceptatiecriteria:
+- De kenmerken zitten verzegeld in het biedpakket en zijn voor de sluitingstijd voor niemand leesbaar, ook niet voor de instantie.
+- De verkoper ziet ze na de onthulling, naast bedrag en motivatie.
+- De kenmerken komen niet in het openbare logboek, net zomin als de motivatie.
+- Bieders die niet gegund krijgen blijven anoniem: de identiteitsenvelop gaat alleen open bij gunning, ongewijzigd.
+- Het scherm zegt bij de bieder dat dit een eigen verklaring is die de verkoper na de sluitingstijd leest.
+
+Testcases:
+- TC1: de kenmerken zijn voor de deadline nergens opvraagbaar (uitbreiding van de lekcheck E2-S0).
+- TC2: na de onthulling ziet de verkoper de kenmerken per bod.
+- TC3 (privacy): het openbare logboek bevat de kenmerken niet.
+- TC4 (privacy): van een niet-gegunde bieder is geen naam of contactgegeven leesbaar, ook niet voor de verkoper.
+
 ## E8. Verificatie voor gebruikers
 
 ### E8-S1 Zelf een bod en logboek verifieren
@@ -321,6 +381,23 @@ Acceptatiecriteria (concept):
 - Een poging tot vroeg ontsleutelen en een poging tot openen van de identiteitsenvelop staan er zichtbaar als mislukt in.
 - De lekcheck over de volledige toestand hoort bij de uitvoer.
 
+### E8-S3 Bewijs op papier (gebouwd)
+Als bieder of verkoper wil ik mijn ontvangstbewijs en het biedlogboek kunnen printen, met uitleg erbij, zodat ik het kan bewaren en aan iemand anders kan laten zien.
+
+Een derde van de verkopers is 65-plus, en de kopers van die woningen zijn bovengemiddeld vaak zelf ook 65-plus (Kadaster, voorjaar 2026). Voor die groep is een JSON-bestand geen bewijsstuk maar een raadsel. De JSON blijft nodig voor de verifier; het papier is er voor de mens en voor de dochter, adviseur of notaris die het namens hem naloopt.
+
+Acceptatiecriteria:
+- Ontvangstbewijs en logboek zijn beide te printen of als pdf op te slaan, naast de bestaande JSON-download.
+- Op beide staat in gewone taal: wat er bewaard is, hoe het versleuteld werd, wanneer en door wie het ontsleuteld wordt, en hoe iemand het kan narekenen.
+- De verwijzing naar het verificatiegereedschap staat erbij, met de opmerking dat het van niemand in het proces is.
+- Geen pdf-bibliotheek in de bundel: de browser drukt af.
+- Alle ingevoegde waarden zijn ge-escaped, want adres en reden zijn vrije tekst.
+
+Testcases:
+- TC1: een ontvangstbewijs bevat bidId, commitment, logIndex, prevHash, entryHash, tijdstip, handtekening en de dossierhash.
+- TC2: een logboek bevat de biedingen, de gebeurtenissen op volgorde, de slotcode en de handtekening.
+- TC3 (beveiliging): een adres met HTML erin komt als tekst op papier en niet als opmaak.
+
 ## E11. Open bieden als tweede verkoopmethode
 
 ### E11-S1 Openbaar bieden naar Noors voorbeeld
@@ -336,6 +413,92 @@ Openstaande vragen voordat dit gebouwd kan worden:
 Acceptatiecriteria (concept):
 - Verzegeld en open bieden draaien op dezelfde core, met dezelfde keten en hetzelfde logboek.
 - Bij open bieden is per bod aantoonbaar dat het van een geverifieerde bieder kwam en wanneer het binnenkwam.
+
+## E12. Vertegenwoordiging en sleutelbeheer
+
+Deze epic komt voort uit één cijfer. Bij ruim één op de drie woningverkopen is de verkoper 65-plus, en dat is inclusief mensen die overlijden en een koophuis nalaten (Kadaster, voorjaar 2026; in Twenterand 34 procent). Het datamodel kent nu één verkoper, met één sleutel, in één browser. Dat klopt niet met wie er in deze markt daadwerkelijk verkoopt, en het is de blokkade voor een instantie met echte woningen.
+
+### E12-S1 Sleutel per account, met een herstelpad dat de operator niet heeft
+Als deelnemer wil ik een sleutel die bij mijn account hoort en die ik kan terugkrijgen op een nieuw apparaat, zodat een gewiste browser of een nieuwe laptop mij niet buitensluit.
+
+Nu maakt de verkoper per woning een sleutelpaar dat in `localStorage` belandt. Kwijt is kwijt, en dan blijft de identiteit van de winnende bieder onleesbaar: de verkoper kan zijn eigen verkoop niet afronden. Voor een doelgroep waarvan een derde 65-plus is, is dat geen randgeval.
+
+De eis die alles bepaalt: het herstelpad mag geen sleutel opleveren die de operator ook heeft. Dan is de versleuteling toneel. Alles wat de server kan uitrekenen, kan degene die de server beheert ook uitrekenen; hij heeft het proces, het geheugen en de schijf. Een geheim in de database dat de beheerder niet kent, bestaat niet. Wat wel werkt is een sleutel die door de gebruiker wordt gedragen.
+
+Voorstel: één sleutelpaar per account, in de browser gemaakt. De private sleutel wordt versleuteld opgeslagen bij de instantie, met een sleutel die is afgeleid uit een herstelcode die de gebruiker eenmalig krijgt en zelf bewaart. Die code past op het printbare document uit E8-S3, wat voor deze doelgroep het juiste medium is.
+
+Wat dit oplevert naast het herstel: dezelfde sleutel kan het concept uit E2 versleutelen, waardoor het bedrag van een voorbereid bod niet langer leesbaar is voor de beheerder.
+
+Openstaande vragen:
+- Wat gebeurt er als de herstelcode kwijt is? Bij een verkoper betekent dat een onleesbare identiteitsenvelop. Is een tweede weg acceptabel, en zo ja, welke, zonder dat de operator hem kan lopen?
+- Hoeveel wrijving is aanvaardbaar bij het eerste gebruik, gemeten bij iemand van boven de 70?
+
+Acceptatiecriteria:
+- Het sleutelpaar wordt in de browser gemaakt; de private sleutel verlaat het apparaat alleen versleuteld.
+- Met de herstelcode kan een gebruiker op een ander apparaat verder, ook nadat browsergegevens gewist zijn.
+- De instantie kan de private sleutel niet ontsleutelen, ook niet met volledige toegang tot haar database.
+- De herstelcode staat op het printbare document.
+
+Testcases:
+- TC1: sleutel maken, browsergegevens wissen, met de herstelcode verder in een andere browser.
+- TC2 (beveiliging): met de volledige database-inhoud en zonder de herstelcode is de private sleutel niet te ontsleutelen.
+- TC3: een verkoper kan na herstel de identiteitsenvelop van het gegunde bod alsnog openen.
+
+### E12-S2 Gemachtigde en erfgenamen
+Als erfgenaam of gemachtigde wil ik een woning kunnen verkopen zonder dat het systeem aanneemt dat de verkoper zelf achter het scherm zit, zodat een nalatenschap of een volmacht geen doodlopende weg is.
+
+`Listing` kent nu één `sellerSub` en één `sellerPublicKey`. Bij drie kinderen die het huis van hun overleden moeder verkopen klopt dat niet, en bij een volmacht evenmin. En als de sleutel bij de overledene hoorde, kan niemand de identiteit van de winnende bieder meer lezen.
+
+Dit is de ontwerpkeuze die je later niet meer terugdraait, want zij zit in het datamodel, in de gunning en in wat er in het logboek terechtkomt.
+
+Openstaande vragen die eerst een antwoord nodig hebben:
+- Meerdere `sellerSub`-waarden, of één verkoperspartij waar meerdere accounts aan hangen? Het tweede is eerlijker tegenover het logboek, want er is één verkopende partij, ook als er drie mensen tekenen.
+- Mag de identiteitsenvelop naar meerdere publieke sleutels versleuteld worden, of hangt zij aan één partij-sleutel die de erfgenamen delen?
+- Wie mag gunnen als er drie gemachtigden zijn? Eén, of allemaal? En wat legt het logboek daarvan vast: dát er namens de partij gegund is, of wie van hen op de knop drukte?
+- Wat is het bewijs van vertegenwoordiging? Het systeem kan een volmacht of verklaring van erfrecht niet toetsen. Waarschijnlijk hoort het alleen vast te leggen dát er namens iemand gehandeld is, en dat controleerbaar te maken, net als bij `buiten_procedure`.
+
+Acceptatiecriteria (concept, af te maken na bovenstaande vragen):
+- Een woning kan een verkopende partij hebben met meer dan één gemachtigd account.
+- Het biedlogboek gaat naar alle gemachtigden, niet alleen naar de eerste.
+- Uit het logboek blijkt dat er namens een partij gegund is, zonder persoonsgegevens van de gemachtigden.
+- Een woning waarvan de verkoper is overleden kan worden afgerond zonder dat diens sleutel nog bestaat.
+
+Testcases:
+- TC1: drie gemachtigden, één gunning, één logregel, drie ontvangers van het logboek.
+- TC2 (beveiliging): een account dat geen gemachtigde is kan niet gunnen.
+
+## E13. Toegankelijkheid voor een vergrijzende markt
+
+De zwaarste technische eisen van dit systeem landen bij de bieder en de verkoper: verzegelen, versleutelen, bewijs bewaren, narekenen. Dat is architectonisch juist, want die last moet liggen waar niemand eraan kan zitten. Maar bij een derde van de transacties is die persoon 65-plus, aan beide kanten. Wat voor een ontwikkelaar een detail is, is daar het verschil tussen meedoen en afhaken.
+
+### E13-S1 Verzegelen op een oud apparaat
+Als bieder met een oude telefoon of laptop wil ik weten dat mijn bod verstuurd wordt en hoe lang dat duurt, zodat ik niet vlak voor de sluitingstijd naar een scherm zit te kijken dat niets doet.
+
+`sealBid` haalt de drand-informatie op en versleutelt in de browser. Hoe lang dat duurt op een vijf jaar oud toestel is nooit gemeten. Als dat tien seconden is zonder zichtbare voortgang, haakt iemand af of drukt hij twee keer.
+
+Acceptatiecriteria:
+- De duur van `sealBid` is gemeten op ten minste één toestel van vijf jaar oud en één trage verbinding, en het resultaat staat vastgelegd.
+- Tijdens het verzegelen toont het scherm voortgang en een verwachting, geen stilstaande knop.
+- Twee keer indrukken levert nooit twee biedingen op.
+- Bij een mislukte drand-aanroep krijgt de bieder een leesbare fout met wat hij nu moet doen, met de sluitingstijd erbij.
+
+Testcases:
+- TC1: de meting is gedaan en gedocumenteerd.
+- TC2: dubbel indrukken tijdens het verzegelen levert één bod op.
+- TC3: drand onbereikbaar levert een begrijpelijke melding, geen stilte.
+
+### E13-S2 Geen verzending die van een open tabblad afhangt (besloten)
+Als bieder wil ik nooit in de veronderstelling verkeren dat mijn bod vanzelf verstuurd wordt terwijl dat niet gebeurt.
+
+Er was een functie die het bod op een gekozen tijdstip verstuurde vanuit het tabblad van de bieder. Die is verwijderd. Voor iemand die zijn laptop dichtklapt in de veronderstelling dat het om 16:00 goed komt, is dit geen gemak maar een val, en juist deze doelgroep sluit de laptop.
+
+Waarom er geen serverzijdige versie voor in de plaats komt: dan zou de core het bod moeten verzegelen, en daarmee kent zij het bedrag vóór de sluitingstijd. Dat is precies de garantie die dit hele systeem draagt. De enige plek waar de core zelf verzegelt is het demoscenario, met een opmerking erbij dat een echte instantie dat nooit doet.
+
+Wat ervoor in de plaats komt is het argument dat toch al klopte: nu versturen kost niets. Het bod is onleesbaar tot de sluitingstijd, ook voor de makelaar, en aanpassen mag daarna nog steeds.
+
+Acceptatiecriteria:
+- Er is geen functie die een bod op een later moment verstuurt, in de browser noch op de server.
+- Het scherm legt uit dat nu versturen niets kost en dat aanpassen open blijft.
 
 ## E9. Federatie en conformiteit
 
@@ -360,6 +523,122 @@ Acceptatiecriteria:
 Testcases:
 - TC1: een instantie met geldig, niet-ingetrokken certificaat wordt als conform herkend.
 - TC2 (beveiliging): een ingetrokken of ontbrekend certificaat wordt afgewezen.
+
+### E9-S3 Bieden zonder de frontend van de instantie
+Als bieder wil ik mijn bod kunnen verzegelen en versturen met gereedschap dat niet van de instantie komt, zodat de operator niet in het pad zit waar mijn bedrag nog leesbaar is.
+
+Dit is het grootste gat dat overblijft. Alle garanties gaan over wat de server niet kan zien, maar de server levert wel de JavaScript die het verzegelen doet. Een operator die code uitlevert welke het bedrag óók onversleuteld meestuurt, omzeilt alles, en geen ontvangstbewijs laat dat zien. Dubbel versleutelen helpt niet: de aanval zit vóór de eerste versleuteling.
+
+Het antwoord voor de browser staat in E9-S5: niet de hele frontend certificeren, maar alleen de afgeschermde module waar het bedrag doorheen gaat. Een hash over de volledige bundel werkt namelijk niet, want elke makelaar past kleuren en teksten aan.
+
+Deze story gaat over de tweede weg, die daarnaast blijft bestaan: de verzegellogica zit al in `@openbod/core` en wordt door de conformance-suite getest. Daar een CLI omheen die inlogt, verzegelt en indient, betekent dat een bieder de website helemaal kan overslaan. Voor wie het echt zeker wil weten is dat de sterkste optie, want er is dan geen enkele door de instantie geleverde code bij betrokken. Het is ook het goedkoopste dat je kunt bouwen, want het meeste bestaat al.
+
+Acceptatiecriteria:
+- Een bieder kan met de CLI een volledig bod plaatsen en zijn ontvangstbewijs opslaan, zonder een frontend te laden.
+- De CLI gebruikt dezelfde `sealBid` als de referentie-implementatie.
+- De CLI komt uit de repo en niet van de instantie, en dat staat er ook bij.
+
+Testcases:
+- TC1: een bod uit de CLI en een bod uit de browser leveren dezelfde soort logregel en een geldig ontvangstbewijs op.
+- TC2: de CLI werkt tegen elke conforme instantie, niet alleen tegen de referentie-instantie.
+
+### E9-S4 Erkende getuigen en de chain hash in het logboek
+Als verifieerder wil ik uit het logboek zelf kunnen aflezen welk timelock-netwerk gebruikt is, zodat een instantie niet stilletjes een getuige kan kiezen die zij zelf beheert.
+
+De hele garantie dat niemand vroeg kan meelezen leunt op drand: een netwerk van onafhankelijke organisaties dat met een drempelhandtekening elke drie seconden een ronde produceert. Niemand kan die handtekening alleen maken, en de ontsleutelsleutel van een bod is de handtekening van de ronde waarnaar versleuteld is. Daarom bestaat die sleutel voor de sluitingstijd niet.
+
+Dat werkt alleen zolang de getuige niet van de instantie is. Nu zit quicknet vastgebakken via `mainnetClient()` in `timelock/timelock.ts`. Dat is veilig maar niet configureerbaar; zodra iemand het configureerbaar maakt voor een fork, kan een instantie naar een netwerk wijzen dat zij zelf draait, en dan kan zij wel vroeg ontsleutelen.
+
+Er is bovendien een gat dat nu al bestaat. De gebruikte getuige staat wel in de ciphertext, in de tlock-header:
+
+```
+age-encryption.org/v1
+-> tlock 31761576 52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba9460...
+```
+
+Rondenummer en chain hash. Maar de ciphertext staat niet in het openbare logboek, dus een buitenstaander kan het uit het logboek alleen niet nagaan.
+
+Acceptatiecriteria:
+- Het logboek vermeldt de chain hash en het rondenummer waarnaar versleuteld is.
+- De verifier controleert dat die chain hash op de lijst van erkende getuigen staat.
+- De lijst van erkende getuigen is onderdeel van de certificering (E9-S2) en publiek.
+- Een instantie die een niet-erkende getuige gebruikt, zakt voor de conformance-suite.
+
+Testcases:
+- TC1: het logboek bevat chain hash en ronde, en die komen overeen met de tlock-header van de biedingen.
+- TC2 (beveiliging): een logboek met een onbekende chain hash wordt door de verifier afgekeurd.
+
+### E9-S5 Afgeschermde biedmodule, vrije vormgeving eromheen
+Als bieder wil ik dat mijn bedrag alleen door gecertificeerde code wordt gezien, ook als de makelaar zijn eigen huisstijl draait, zodat de vormgeving en de garantie niet met elkaar in de weg zitten.
+
+Dit lost het bezwaar op dat een gepubliceerde bundelhash in de praktijk nooit klopt: een makelaar wil juist kleuren, logo en teksten aanpassen (E1-S3, E10-S1). Een hash over de hele frontend is dan waardeloos, want elke instantie is anders.
+
+De oplossing is dezelfde die de betaalwereld al gebruikt. Een webwinkel richt zijn afrekenpagina volledig naar eigen smaak in, maar het veld waar het pasnummer in gaat komt uit een afgeschermd onderdeel van de betaaldienst, en de winkel ziet dat nummer nooit. Zo hoort het hier ook: **niet de hele frontend certificeren, maar alleen het stukje waar het bedrag doorheen gaat.**
+
+Concreet: het biedformulier plus de verzegellogica draaien in een afgeschermd onderdeel op een eigen origine, geladen vanaf het register (E9-S7). De pagina van de makelaar kan daar niet in kijken, want de browser staat dat over origines heen niet toe. De makelaar geeft kleuren en teksten als parameters mee en richt alles eromheen in zoals hij wil. Wat er terugkomt is de ciphertext, nooit het bedrag.
+
+Wat dit wel en niet verplaatst: de partij die dat onderdeel serveert wordt vertrouwd om eerlijke code te leveren, net als de partij die releases ondertekent. Zij ziet de gegevens niet: het verzegelen gebeurt in de browser van de bieder en alleen de ciphertext verlaat die. Dat is dezelfde soort vertrouwensrelatie als bij een certificaatuitgever, en veel smaller dan iedere makelaar afzonderlijk vertrouwen.
+
+Acceptatiecriteria:
+- Het biedformulier en `sealBid` draaien in een afgeschermd onderdeel op een eigen origine.
+- De omliggende pagina kan de invoervelden niet uitlezen.
+- Vormgeving gaat als parameters naar binnen; de makelaar kan alles eromheen inrichten.
+- Alleen commitment, ciphertext en identiteitsenvelop verlaten het onderdeel.
+- Het artefact heeft een gepubliceerde, ondertekende hash die niet meebeweegt met de huisstijl.
+
+Testcases:
+- TC1: twee instanties met verschillende huisstijl laden hetzelfde artefact met dezelfde hash.
+- TC2 (beveiliging): script in de omliggende pagina kan het bedrag niet lezen.
+- TC3: bieden werkt onveranderd, met hetzelfde ontvangstbewijs als nu.
+
+### E9-S6 Gedragscontrole van een draaiende instantie
+Als toetser wil ik van buitenaf kunnen vaststellen dat een instantie zich houdt aan het protocol, zonder te hoeven weten welke code zij draait.
+
+Een server kan zeggen dat hij versie 1.2.3 draait terwijl hij iets anders draait. Dat is niet oplosbaar met een versienummer, en de zware oplossing (reproduceerbare builds plus attestatie in beveiligde hardware) is voor later. De omkering is goedkoper en sterker: **je hoeft de code niet te controleren als de uitvoer narekenbaar is.** Zo werkt Certificate Transparency ook: niemand controleert de software van een certificaatuitgever, maar hun uitvoer moet append-only en consistent zijn, en dat is wel te controleren.
+
+Vier controles die van buitenaf werken:
+
+1. **Anchoring** (E4-S2). Root-hashes in een publieke log. Wie de keten herschrijft, wijkt af van wat er geanchord staat.
+2. **Ontvangstbewijzen.** Elke bieder houdt een ondertekende regel vast. Een bewaard bewijs dat niet meer klopt, ontmaskert een herschreven keten.
+3. **Een proefbod.** Het register plaatst periodiek zelf een bod op elke gecertificeerde instantie en controleert het ontvangstbewijs, de keten en de anchor. Dat geeft een actueel signaal in plaats van een certificaat van vorig jaar.
+4. **Wat wiskundig afgedwongen is.** De timelock werkt ongeacht welke code eronder draait: de sleutel bestaat nog niet.
+
+Acceptatiecriteria:
+- De conformance-suite kan tegen een draaiende instantie op afstand, niet alleen tegen een lokale build.
+- Een proefbod levert een ontvangstbewijs op dat tegen de gepubliceerde sleutel van de instantie verifieert.
+- Het resultaat per instantie is machinaal leesbaar en gaat naar het register.
+- Een instantie die niet anchort, valt op zonder dat iemand haar code hoeft te zien.
+
+Testcases:
+- TC1: de suite draait op afstand tegen de referentie-instantie en slaagt.
+- TC2 (beveiliging): een instantie die vroeg kan ontsleutelen, zakt.
+- TC3 (beveiliging): een instantie die haar keten na een proefbod herschrijft, valt op tegen het bewaarde ontvangstbewijs.
+
+### E9-S7 Publiek register: van buitenaf zien of een instantie in orde is
+Als koper of verkoper wil ik op een publieke plek kunnen opzoeken of de website van deze makelaar te vertrouwen is, zodat ik dat niet aan die makelaar zelf hoef te vragen.
+
+Dit is bewust een register en geen centrale core. Alle live biedingen op een plek zetten zou een AVG-honeypot opleveren, de beheerder aansprakelijk maken, een single point of failure creeren en een monopolie vestigen; zie ARCHITECTURE.md §6. Wat centraal mag staan is dun en bevat geen biedingen.
+
+Het register houdt drie dingen bij:
+
+1. **Een trust-list.** Publieke sleutel van de instantie plus een geldig, intrekbaar certificaat.
+2. **De transparency-log.** Waar iedere instantie haar root-hashes naartoe anchort. Alleen hashes, geen persoonsgegevens.
+3. **De gepubliceerde hashes** van gecertificeerde releases, inclusief het afgeschermde biedartefact uit E9-S5.
+
+Daarmee kan iedereen van buitenaf, zonder iets voor die makelaar te hosten en zonder dat de beheerder meer te zien krijgt, controleren: heeft deze instantie een geldig certificaat, anchort zij daadwerkelijk, en is het biedartefact dat zij laadt een erkende versie.
+
+Acceptatiecriteria:
+- Het register is publiek te bevragen op domeinnaam en op instantiesleutel.
+- Het toont per instantie: certificaatstatus, laatste anchor met tijdstip, en de versie van het biedartefact.
+- Een ingetrokken certificaat is meteen zichtbaar.
+- Het register bevat geen biedingen, geen persoonsgegevens en geen woninggegevens.
+- Een bezoeker kan vanaf de woningpagina in een klik naar de registervermelding van die instantie.
+
+Testcases:
+- TC1: een gecertificeerde instantie is vindbaar en toont een recente anchor.
+- TC2: een instantie die drie dagen niet geanchord heeft, is als zodanig zichtbaar.
+- TC3 (beveiliging): een instantie die een niet-erkend biedartefact laadt, is als zodanig zichtbaar.
+- TC4 (privacy): het register bevat geen enkel gegeven dat naar een bieder of woning te herleiden is.
 
 ## E10. Presentatie en white-label
 

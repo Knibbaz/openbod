@@ -176,6 +176,10 @@ Wel doen: **federatie plus een dunne neutrale verifieerbaarheidslaag plus certif
 
 Optioneel en zwaarder, voor later: reproduceerbare builds plus remote attestation (TEE) om te bewijzen dat de draaiende instantie de ongewijzigde core is.
 
+**Wel centraal, en alleen dit: het register.** De verleiding is groot om zelf de core te draaien en makelaars alleen de frontend te laten wijzigen, zodat je kunt garanderen dat er geen gesjoemelde versie draait. Dat lost een echt probleem op, maar met de verkeerde maatregel: het herintroduceert alle vier de bezwaren hierboven. Wat je nodig hebt is geen centrale core maar een centraal register met drie dunne onderdelen: de trust-list met intrekbare certificaten, de transparency-log met root-hashes, en de gepubliceerde hashes van gecertificeerde releases. Daarmee is van buitenaf vast te stellen of een instantie een geldig certificaat heeft, of zij daadwerkelijk anchort, en of het biedartefact dat zij laadt een erkende versie is, zonder dat er ook maar een bod centraal staat. Zie E9-S5 tot en met E9-S7 in de backlog.
+
+De omkering die dit mogelijk maakt: je hoeft de code van een instantie niet te controleren als haar uitvoer narekenbaar is. Certificate Transparency doet hetzelfde. Niemand toetst de software van een certificaatuitgever; hun uitvoer moet append-only en consistent zijn, en dat is wel te controleren.
+
 Antwoord op je vraag dus: iedereen draait zijn eigen core, en je weet dat iemand echt is aangesloten doordat (a) zijn gebruikers een verifieerbaar bewijs in handen hebben, (b) hij aantoonbaar anchort in de gedeelde publieke log, en (c) hij een geldig conformance-certificaat draagt. Alleen die dunne log en de certificering staan centraal, en die bevatten geen biedingen.
 
 ## 7. De core stabiel houden
