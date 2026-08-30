@@ -11,10 +11,12 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import DownloadIcon from "@mui/icons-material/FileDownloadOutlined";
+import PrintIcon from "@mui/icons-material/PrintOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMoreOutlined";
 import ShieldIcon from "@mui/icons-material/ShieldOutlined";
 import type { Listing, Logbook, MyBid } from "../lib/api";
 import { verifyHashChainInBrowser } from "../lib/verify";
+import { printLogboek, printOntvangstbewijs } from "../lib/printbaar";
 
 /**
  * Al het technische bewijs op één plek, dichtgeklapt.
@@ -154,12 +156,16 @@ export function Bewijspaneel({
                 <Button variant="outlined" startIcon={<DownloadIcon />} onClick={downloadOntvangstbewijs}>
                   Bewaar mijn ontvangstbewijs
                 </Button>
+                <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => printOntvangstbewijs(listing, myBid)}>
+                  Print of sla op als pdf
+                </Button>
               </Stack>
               <Typography variant="body2" color="text.secondary">
                 Bewaar dit nu, niet straks: deze website is de enige plek waar het staat, en jij bent de enige die het
                 later nodig heeft. Met het bestand plus het logboek toont{" "}
                 <code>openbod-verify receipt</code> aan dat jouw bod op dit tijdstip in de ketting is opgenomen, ook
-                als deze instantie dat later zou ontkennen.
+                als deze instantie dat later zou ontkennen. De printbare versie bevat dezelfde gegevens plus een uitleg
+                in gewone taal van wat er bewaard is en hoe iemand het voor je kan narekenen.
               </Typography>
             </Stack>
           )}
@@ -178,6 +184,9 @@ export function Bewijspaneel({
                 </Button>
                 <Button variant="text" startIcon={<DownloadIcon />} onClick={download}>
                   Download het logboek
+                </Button>
+                <Button variant="text" startIcon={<PrintIcon />} onClick={() => printLogboek(listing, logbook)}>
+                  Print of sla op als pdf
                 </Button>
               </Stack>
               {chainCheck && (
