@@ -6,6 +6,8 @@ Werktitel: *OpenBod* (placeholder). Kies later een naam die niet botst met besta
 
 Status: serieus hobby- en referentieproject. Open source, klein gehouden, geen commerciële SaaS. Doel is de schoonste open invulling van de NTA 8061 en een begrijpelijke demo die naar het ministerie kan.
 
+Wat er werkt en wat er nog open staat, staat in `STAND.md`. De protocolspecificatie staat in `spec/protocol.md`, de volledige scope in `spec/backlog.md`, en de architectuurkeuzes in `ARCHITECTURE.md`.
+
 ---
 
 ## 1. Samenvatting
