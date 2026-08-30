@@ -141,27 +141,76 @@ repo onder Settings, Secrets and variables, Actions:
 Elke push naar `main` levert `latest` en `sha-<commit>`. Een git-tag die met `v`
 begint levert daarnaast de versienummers: `git tag v0.2.0 && git push --tags`.
 
-## Wat een herstart wist
+## Wat er bewaard blijft, en hoe je het veiligstelt
 
-**Er is geen database.** `packages/core/src/store.ts` houdt alles in het geheugen,
-dus elke `up -d` die containers vervangt, en elke reboot van de VPS, wist de
-woningen, de biedingen en de logboeken. Voor een demo-instantie is dat geen
-bezwaar; die zet zichzelf toch elk half uur terug. Voor een instantie waar echte
-biedingen op binnenkomen is het een blokkade, en dan is Postgres achter dezelfde
-`OpenBodStore` de eerste stap.
+De core bewaart woningen, biedingen, hashketens en logboeken in een
+SQLite-bestand op het Docker-volume `core-data` (`CORE_DB_PATH`, standaard
+`/data/openbod.db`). Identity bewaart de koppeling van pseudonieme sub naar
+e-mailadres in `identity-data` (`IDENTITY_DB_PATH`). Een reboot van de VPS en
+een `up -d` die containers vervangt raken die volumes niet aan.
 
-Twee dingen die je wél kunt vastzetten, en die je ook moet vastzetten als de
-instantie blijft staan:
+Elke schrijf gaat met een fsync naar disk voordat de bieder antwoord krijgt
+(WAL plus `synchronous=FULL`). Dat is geen overdreven voorzichtigheid: crasht de
+machine tussen "bod aangenomen" en "bod op disk", dan houdt de bieder een
+ondertekend ontvangstbewijs vast voor een bod dat de instantie na de herstart
+niet meer kent, en dat leest als bedrog terwijl het een stroomstoring was.
+
+Start de core op met een keten die niet klopt, dan weigert zij te starten en
+zegt bij welke woning en welke regel. Doorgaan op een beschadigde keten zou
+betekenen dat de instantie verder tekent op iets wat niet meer klopt.
+
+De demo-instantie (`DEMO_INSTANCE=true`) bewaart bewust niets: die zet zichzelf
+elk half uur terug en hoort geen e-mailadressen achter te laten.
+
+### Twee sleutels die je ook moet vastzetten
 
 - `CORE_SIGNING_KEY`: de sleutel waarmee de instantie logboeken en
   ontvangstbewijzen ondertekent. Zonder deze maakt de core bij elke start een
   nieuwe, en dan faalt de verificatie van een logboek dat iemand gisteren
-  downloadde: de handtekening hoort bij een sleutel die niet meer bestaat. Dat is
-  precies het soort "u moet ons maar geloven" dat dit project wil uitbannen.
+  downloadde: de handtekening hoort bij een sleutel die niet meer bestaat. Dat
+  is precies het soort "u moet ons maar geloven" dat dit project wil uitbannen.
 - `IDENTITY_SIGNING_JWK`: de sleutel waarmee inlogtokens ondertekend worden.
   Zonder deze is iedereen na een herstart uitgelogd.
 
 Beide staan met een generatiecommando in `deploy/.env.example`.
+
+### Back-up
+
+Een volume overleeft een herstart, geen kapotte schijf en geen
+`docker compose down -v`. Die vlag dus nooit op een instantie met echte
+biedingen.
+
+SQLite mag je niet kopiëren met `cp` terwijl er geschreven wordt; `VACUUM INTO`
+maakt wel een consistente kopie van een draaiende database:
+
+```
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env exec core \
+  node -e "const{DatabaseSync}=require('node:sqlite');new DatabaseSync('/data/openbod.db').exec(\"VACUUM INTO '/data/backup.db'\")"
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env cp core:/data/backup.db ./openbod-$(date +%F).db
+```
+
+Zet dat in een nachtelijke cron en schrijf het resultaat weg naar een andere
+machine. Doe hetzelfde voor `identity.db`: zonder dat bestand kun je de
+biedingen wel terugzetten, maar het logboek niet meer bezorgen.
+
+Wat een back-up hier extra waard maakt: als je anchoren aanzet (ARCHITECTURE.md
+§6.2), kun je na een herstel aantonen dat wat je hebt teruggezet hetzelfde is
+als wat er stond.
+
+### Analyses
+
+Doe die niet op de instantie die op dat moment biedingen aanneemt: geen zware
+query naast een `placeBid`, en geen leestoegang tot een tabel met
+identiteitsenveloppen. Werk op een kopie, of beter op de ondertekende
+biedlogboeken, want die zijn al pseudoniem en de interessante vragen gaan toch
+over meerdere instanties heen.
+
+Op de kopie: `revealed_bids` heeft naast de JSON een `amount_cents`-kolom, hele
+centen als integer, afgeleid bij de onthulling. Reken daarmee en niet met het
+bedrag uit de JSON, want dat is een float. Percentielen kunnen met window
+functions (`row_number() over (order by ...)` plus `count(*) over ()`); voor
+`quantile_cont`, `DECIMAL` en volledige datum- en tijdfuncties lees je het
+bestand rechtstreeks in met DuckDB.
 
 ## Op een eigen VPS
 
@@ -301,14 +350,16 @@ Deze staan ook in de UI, maar hier expliciet, want ze zijn geen bugs:
 - **De demo wist zichzelf**, ook met `DEMO_INSTANCE=true`. Elk half uur verdwijnt
   alles wat er staat, inclusief biedingen van bezoekers. Dat staat in de UI, zodat
   niemand zijn ontvangstbewijs kwijtraakt zonder gewaarschuwd te zijn.
-- **Alles staat in het geheugen.** `packages/core/src/store.ts` is een
-  in-memory-referentie. Herstart je de container, dan zijn de woningen, biedingen
-  en logboeken weg.
+- **Eén schrijver, één machine.** De opslag is SQLite in het core-proces. Dat is
+  ruim genoeg voor wat een instantie aan biedingen verwerkt, maar het betekent
+  wel dat je de core niet in meervoud kunt draaien. Wie dat nodig heeft, zet een
+  andere implementatie achter dezelfde `Persistence`-poort
+  (`packages/core/src/persistence/port.ts`); de rest van de core verandert niet.
 - **Zonder `CORE_SIGNING_KEY` en `IDENTITY_SIGNING_JWK` zijn de sleutels vluchtig.**
   Dan genereren core en identity er bij elke start nieuwe: bestaande tokens vervallen
-  en eerder verstrekte logboeken zijn niet meer te verifieren. Zie "Wat een herstart
-  wist" hierboven. Rotatiebeleid (meerdere geldige sleutels tegelijk, netjes uitfaseren)
-  is er nog niet.
+  en eerder verstrekte logboeken zijn niet meer te verifieren. Zie "Wat er bewaard
+  blijft" hierboven. Rotatiebeleid (meerdere geldige sleutels tegelijk, netjes
+  uitfaseren) is er nog niet.
 - **Geen publieke verankering.** De root-hash wordt nog nergens extern gepubliceerd
   (zie de backlog). De hashketen en de handtekening zijn er wel, en de losse
   `verifier`-CLI rekent ze na.
@@ -340,3 +391,6 @@ node packages/verifier/dist/cli.js logbook logboek.json
 ```
 docker compose -f deploy/docker-compose.yml down
 ```
+
+De volumes blijven staan, dus `up -d` brengt de woningen en biedingen terug.
+Gebruik `down -v` alleen als je ze echt kwijt wilt: dat wist ook de biedingen.

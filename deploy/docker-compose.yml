@@ -12,7 +12,9 @@
 # frontend terug terwijl alles er goed uitziet. En zonder `pull` blijft een
 # oudere `latest` die al op de machine staat gewoon draaien.
 #
-# Let ook op wat een herstart wist: er is geen database. Zie deploy/README.md.
+# De biedingen staan in een SQLite-bestand op een Docker-volume, dus een
+# herstart wist ze niet. Het volume overleeft `down` en `up` wel, maar geen
+# `down -v` en geen kapotte schijf: zie de back-upsectie in deploy/README.md.
 #
 # Zet hier een reverse proxy met TLS voor (Caddy, Traefik, of wat je host
 # aanbiedt) en laat die naar poort 8080 wijzen.
@@ -47,8 +49,14 @@ services:
       # Vaste ondertekensleutel voor inlogtokens. Zonder deze is iedereen na een
       # herstart uitgelogd, want de core controleert tokens tegen de JWKS.
       IDENTITY_SIGNING_JWK: ${IDENTITY_SIGNING_JWK:-}
+      # Waar de koppeling van pseudonieme sub naar e-mailadres blijft staan.
+      # Zonder deze kan het biedlogboek na een herstart niet bezorgd worden aan
+      # wie sindsdien niet opnieuw inlogde.
+      IDENTITY_DB_PATH: ${IDENTITY_DB_PATH:-/data/identity.db}
       TRUST_PROXY: "true"
     restart: unless-stopped
+    volumes:
+      - identity-data:/data
     expose:
       - "4001"
     healthcheck:
@@ -85,11 +93,17 @@ services:
       # gedownload logboek bij een sleutel die na een herstart niet meer bestaat,
       # en faalt de verificatie van een logboek dat gewoon echt is.
       CORE_SIGNING_KEY: ${CORE_SIGNING_KEY:-}
+      # Waar de woningen, de biedingen en de logboeken blijven staan. Zonder
+      # deze wist elke herstart alles, en houdt een bieder een ondertekend
+      # ontvangstbewijs vast voor een bod dat niet meer bestaat.
+      CORE_DB_PATH: ${CORE_DB_PATH:-/data/openbod.db}
       TRUST_PROXY: "true"
     depends_on:
       identity:
         condition: service_healthy
     restart: unless-stopped
+    volumes:
+      - core-data:/data
     expose:
       - "4000"
 
@@ -104,3 +118,10 @@ services:
       - core
       - identity
     restart: unless-stopped
+
+volumes:
+  # Hier staan de biedingen. Dit volume overleeft `up -d`, `restart` en een
+  # reboot van de host. Het overleeft geen `down -v`, dus die vlag nooit op een
+  # instantie met echte biedingen.
+  core-data:
+  identity-data:

@@ -184,6 +184,7 @@ Jouw eis dat de core altijd werkt en dat wijzigingen streng getest worden, veran
 
 - **Spec los van implementatie.** `spec/protocol.md` legt de invarianten vast als stabiel contract. De implementatie mag veranderen, de invarianten niet zomaar.
 - **Conformance-suite als eerste burger.** `packages/conformance` test elke instantie tegen de eisen. `core/test/invariants` doet property-based tests op de kerngaranties, onder andere: een bod is vóór de deadline nooit leesbaar, de hashketen verifieert altijd, een onthulling matcht altijd zijn commitment, geen bod kan verdwijnen of wijzigen zonder detectie.
+- **Opslag achter een poort.** `OpenBodStore` schrijft door naar een `Persistence` (`packages/core/src/persistence/port.ts`), standaard SQLite in hetzelfde proces. Eerst naar disk, dan pas het geheugen: een bieder krijgt zijn ondertekende ontvangstbewijs pas als de logregel er staat. Een andere opslag is een andere implementatie van die poort, niet een andere core.
 - **Semver plus eeuwige verifieerbaarheid.** Breaking changes zijn een major versie. Oude logboeken moeten voor altijd verifieerbaar blijven, dus formaten zijn geversioneerd.
 - **CI-poorten.** Geen merge zonder groene conformance-tests, property-tests en een reproduceerbare-build-check.
 - **Governance voor core-wijzigingen.** Suggesties lopen via een korte RFC en moeten de tests halen voordat ze de stabiele pad raken. Zo blijven bijdragen welkom terwijl de core beschermd is.

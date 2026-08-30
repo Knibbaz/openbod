@@ -10,6 +10,7 @@ import {
 import { sha256Hex } from "./commit/hash.js";
 import { computeDossierHash } from "./model/dossier.js";
 import { canonicalize } from "./commit/canonical.js";
+import { NoPersistence, type Persistence } from "./persistence/port.js";
 import type {
   BidReceipt,
   Kenmerken,
@@ -73,10 +74,19 @@ interface ListingRecord {
   delivery?: DeliveryResult;
 }
 
+export class ChainCorruptError extends Error {}
+
 /**
- * In-memory referentie-implementatie van de core-orchestratie. Voor de MVP-demo;
- * een productie-instantie vervangt dit door een persistente store zonder de
- * invarianten of het API-contract te wijzigen (ARCHITECTURE.md §7).
+ * De orchestratie van de core. Houdt de lopende toestand in het geheugen en
+ * schrijft haar door naar de meegegeven `Persistence`, zodat een herstart geen
+ * biedingen wist (ARCHITECTURE.md §7).
+ *
+ * De volgorde binnen elke mutatie is steeds dezelfde en is geen stijlkwestie:
+ * eerst naar disk, dan pas het geheugen. Faalt de schrijf, dan gooit de methode
+ * voordat de aanroeper iets in handen heeft. Andersom zou een bieder een
+ * ondertekend ontvangstbewijs kunnen houden voor een bod dat na een
+ * stroomstoring nergens meer staat, en dat leest als bedrog terwijl het een
+ * stroomstoring was.
  */
 export class OpenBodStore {
   private listings = new Map<string, ListingRecord>();
@@ -95,8 +105,44 @@ export class OpenBodStore {
      * logboek na een herstart niet meer te verifieren.
      */
     keypair: InstanceKeypair = new InstanceKeypair(),
+    /**
+     * Waar de toestand blijft. Standaard nergens, wat precies genoeg is voor
+     * tests en voor de demo-instantie; een deployment geeft hier een
+     * `SqlitePersistence` mee.
+     */
+    private readonly db: Persistence = new NoPersistence(),
   ) {
     this.keypair = keypair;
+    this.hydrate();
+  }
+
+  /**
+   * De bewaarde toestand teruglezen. Nadrukkelijk teruglezen en niet
+   * herberekenen: zouden we de logregels opnieuw genereren, dan kregen ze
+   * nieuwe timestamps en dus nieuwe hashes, en dan klopt geen enkel eerder
+   * uitgegeven ontvangstbewijs meer.
+   */
+  private hydrate(): void {
+    for (const stored of this.db.load()) {
+      const check = HashChain.verify(stored.entries);
+      if (!check.valid) {
+        // Doorgaan op een beschadigde keten is erger dan stilstaan: de instantie
+        // zou dan verder tekenen op iets wat niet meer klopt.
+        throw new ChainCorruptError(
+          `de hashketen van woning ${stored.listing.id} is beschadigd bij regel ${check.firstBrokenIndex}`,
+        );
+      }
+      const bids = new Map<string, SealedBid>();
+      for (const bid of stored.sealedBids) bids.set(bid.bidId, bid);
+      this.listings.set(stored.listing.id, {
+        listing: stored.listing,
+        chain: new HashChain(stored.entries),
+        bids,
+        revealed: stored.revealed,
+        logbook: stored.logbook,
+        delivery: stored.delivery,
+      });
+    }
   }
 
   /**
@@ -106,6 +152,7 @@ export class OpenBodStore {
    * en een eerder gedownload logboek moet ook na een reset te verifieren zijn.
    */
   clear(): void {
+    this.db.clear();
     this.listings.clear();
   }
 
@@ -154,11 +201,19 @@ export class OpenBodStore {
     // De keten begint pas als de inschrijving opengaat. Een concept is nog geen
     // procedure: er valt niets aan te tonen zolang niemand kon bieden, en de
     // dossierhash hoort te horen bij wat er bij het openen op het scherm stond.
-    if (publiceren) {
-      // De dossierhash gaat mee de keten in. Daarmee ligt vast waarop er geboden
-      // werd, niet alleen dát er geboden werd (I15).
-      chain.append("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline, dossierHash })));
-    }
+    //
+    // De dossierhash gaat mee de keten in. Daarmee ligt vast waarop er geboden
+    // werd, niet alleen dát er geboden werd (I15).
+    const entry = publiceren
+      ? chain.draft("listing_opened", sha256Hex(canonicalize({ id, deadline: input.deadline, dossierHash })))
+      : undefined;
+
+    this.db.transaction(() => {
+      this.db.saveListing(listing);
+      if (entry) this.db.appendLogEntry(id, entry);
+    });
+
+    if (entry) chain.commit(entry);
     this.listings.set(id, { listing, chain, bids: new Map() });
     return listing;
   }
@@ -176,13 +231,19 @@ export class OpenBodStore {
     if (new Date(rec.listing.deadline).getTime() <= Date.now()) {
       throw new RuleViolationError("sluitingsdatum ligt in het verleden");
     }
-    rec.listing.status = "biedfase";
-    rec.chain.append(
+    const entry = rec.chain.draft(
       "listing_opened",
       sha256Hex(
         canonicalize({ id: rec.listing.id, deadline: rec.listing.deadline, dossierHash: rec.listing.dossierHash }),
       ),
     );
+    this.db.transaction(() => {
+      this.db.saveListing({ ...rec.listing, status: "biedfase" });
+      this.db.appendLogEntry(listingId, entry);
+    });
+
+    rec.chain.commit(entry);
+    rec.listing.status = "biedfase";
     return rec.listing;
   }
 
@@ -230,7 +291,7 @@ export class OpenBodStore {
     }
     const bidId = randomUUID();
     const now = new Date().toISOString();
-    const entry = rec.chain.append("bid_placed", sha256Hex(commitment));
+    const entry = rec.chain.draft("bid_placed", sha256Hex(commitment));
     const sealed: SealedBid = {
       bidId,
       listingId,
@@ -244,6 +305,15 @@ export class OpenBodStore {
       logIndex: entry.index,
       identityEnvelope,
     };
+
+    // Het bod staat op disk voordat de bieder zijn ontvangstbewijs krijgt. Dit
+    // is het punt waar die volgorde het meest telt.
+    this.db.transaction(() => {
+      this.db.appendLogEntry(listingId, entry);
+      this.db.saveSealedBid(sealed);
+    });
+
+    rec.chain.commit(entry);
     rec.bids.set(bidId, sealed);
     return this.receiptFor(rec, sealed, entry.index);
   }
@@ -265,7 +335,7 @@ export class OpenBodStore {
     if (!existing || existing.bidderSub !== bidderSub || existing.withdrawn) {
       throw new RuleViolationError("bod niet gevonden of niet van deze bieder");
     }
-    const entry = rec.chain.append("bid_adjusted", sha256Hex(commitment));
+    const entry = rec.chain.draft("bid_adjusted", sha256Hex(commitment));
     const updated: SealedBid = {
       ...existing,
       commitment,
@@ -275,6 +345,13 @@ export class OpenBodStore {
       logIndex: entry.index,
       identityEnvelope: identityEnvelope ?? existing.identityEnvelope,
     };
+
+    this.db.transaction(() => {
+      this.db.appendLogEntry(listingId, entry);
+      this.db.saveSealedBid(updated);
+    });
+
+    rec.chain.commit(entry);
     rec.bids.set(bidId, updated);
     return this.receiptFor(rec, updated, entry.index);
   }
@@ -289,9 +366,16 @@ export class OpenBodStore {
     if (!existing || existing.bidderSub !== bidderSub || existing.withdrawn) {
       throw new RuleViolationError("bod niet gevonden of niet van deze bieder");
     }
-    existing.withdrawn = true;
-    existing.updatedAt = new Date().toISOString();
-    rec.chain.append("bid_withdrawn", sha256Hex(existing.commitment));
+    const entry = rec.chain.draft("bid_withdrawn", sha256Hex(existing.commitment));
+    const updated: SealedBid = { ...existing, withdrawn: true, updatedAt: new Date().toISOString() };
+
+    this.db.transaction(() => {
+      this.db.appendLogEntry(listingId, entry);
+      this.db.saveSealedBid(updated);
+    });
+
+    rec.chain.commit(entry);
+    rec.bids.set(bidId, updated);
   }
 
   closeListing(listingId: string): Listing {
@@ -299,8 +383,14 @@ export class OpenBodStore {
     if (rec.listing.status !== "biedfase") {
       throw new InvalidTransitionError(`kan niet sluiten vanuit status ${rec.listing.status}`);
     }
+    const entry = rec.chain.draft("listing_closed", sha256Hex(rec.listing.id));
+    this.db.transaction(() => {
+      this.db.saveListing({ ...rec.listing, status: "gesloten" });
+      this.db.appendLogEntry(listingId, entry);
+    });
+
+    rec.chain.commit(entry);
     rec.listing.status = "gesloten";
-    rec.chain.append("listing_closed", sha256Hex(rec.listing.id));
     return rec.listing;
   }
 
@@ -334,15 +424,37 @@ export class OpenBodStore {
   private async performReveal(rec: ListingRecord): Promise<Logbook> {
     const active = [...rec.bids.values()].filter((b) => !b.withdrawn);
     const revealed: RevealedBid[] = [];
+    // Eerst al het ontsleutelwerk, pas daarna de keten aanraken. Het ontsleutelen
+    // duurt seconden en geeft de event loop tussendoor vrij; zou de transactie
+    // daar overheen lopen, dan zou een gelijktijdig bod erin terechtkomen.
     for (const sealed of active) {
-      const bid = await revealBid(sealed);
-      revealed.push(bid);
-      rec.chain.append("bid_revealed", sha256Hex(canonicalize({ bidId: bid.bidId, valid: bid.valid })));
+      revealed.push(await revealBid(sealed));
     }
+
+    const drafted = rec.chain.draftAll(
+      revealed.map((bid) => ({
+        type: "bid_revealed" as const,
+        payloadHash: sha256Hex(canonicalize({ bidId: bid.bidId, valid: bid.valid })),
+      })),
+    );
+    const listing: Listing = { ...rec.listing, status: "onthuld" };
+    const logbook = generatePublicLogbook(listing, revealed, [...rec.chain.all(), ...drafted], this.keypair);
+
+    // Alle onthullingsregels, de onthulde biedingen en het logboek in één
+    // schrijf. Een half onthulde woning op disk zou een keten opleveren die
+    // klopt qua hashes maar niet vertelt wat er gebeurd is.
+    this.db.transaction(() => {
+      for (const entry of drafted) this.db.appendLogEntry(rec.listing.id, entry);
+      this.db.saveRevealed(rec.listing.id, revealed);
+      this.db.saveListing(listing);
+      this.db.saveLogbook(rec.listing.id, logbook);
+    });
+
+    rec.chain.commitAll(drafted);
     rec.revealed = revealed;
     rec.listing.status = "onthuld";
-    rec.logbook = generatePublicLogbook(rec.listing, revealed, rec.chain.all(), this.keypair);
-    return rec.logbook;
+    rec.logbook = logbook;
+    return logbook;
   }
 
   /**
@@ -366,17 +478,33 @@ export class OpenBodStore {
       throw new RuleViolationError("er kan alleen gegund worden aan een geldig onthuld bod");
     }
 
-    rec.chain.append("gegund", sha256Hex(canonicalize({ listingId, bidId })));
-    if (sealed.identityEnvelope) {
-      rec.chain.append("identiteit_vrijgegeven", sha256Hex(canonicalize({ listingId, bidId })));
-    }
-    rec.listing.awardedBidId = bidId;
-    rec.listing.status = "onherroepelijk";
+    const payloadHash = sha256Hex(canonicalize({ listingId, bidId }));
+    const drafted = rec.chain.draftAll([
+      { type: "gegund", payloadHash },
+      ...(sealed.identityEnvelope ? [{ type: "identiteit_vrijgegeven" as const, payloadHash }] : []),
+    ]);
+    const listing: Listing = { ...rec.listing, awardedBidId: bidId, status: "onherroepelijk" };
     // Het logboek is bij de onthulling gegenereerd en mist de gunningsregels;
     // opnieuw genereren houdt het logboek gelijk aan de keten.
-    rec.logbook = generatePublicLogbook(rec.listing, rec.revealed ?? [], rec.chain.all(), this.keypair);
+    const logbook = generatePublicLogbook(
+      listing,
+      rec.revealed ?? [],
+      [...rec.chain.all(), ...drafted],
+      this.keypair,
+    );
 
-    return { bidId, identityEnvelope: sealed.identityEnvelope, logbook: rec.logbook };
+    this.db.transaction(() => {
+      for (const entry of drafted) this.db.appendLogEntry(listingId, entry);
+      this.db.saveListing(listing);
+      this.db.saveLogbook(listingId, logbook);
+    });
+
+    rec.chain.commitAll(drafted);
+    rec.listing.awardedBidId = bidId;
+    rec.listing.status = "onherroepelijk";
+    rec.logbook = logbook;
+
+    return { bidId, identityEnvelope: sealed.identityEnvelope, logbook };
   }
 
   /**
@@ -412,15 +540,35 @@ export class OpenBodStore {
     }
 
     const at = new Date().toISOString();
-    rec.chain.append(
+    const entry = rec.chain.draft(
       "buiten_procedure_afgehandeld",
       sha256Hex(canonicalize({ listingId, previousStatus, reason: trimmed })),
     );
+    const listing: Listing = {
+      ...rec.listing,
+      status: "buiten_procedure",
+      buitenProcedureReden: trimmed,
+      buitenProcedureAt: at,
+    };
+    const logbook = generatePublicLogbook(
+      listing,
+      rec.revealed ?? [],
+      [...rec.chain.all(), entry],
+      this.keypair,
+    );
+
+    this.db.transaction(() => {
+      this.db.appendLogEntry(listingId, entry);
+      this.db.saveListing(listing);
+      this.db.saveLogbook(listingId, logbook);
+    });
+
+    rec.chain.commit(entry);
     rec.listing.status = "buiten_procedure";
     rec.listing.buitenProcedureReden = trimmed;
     rec.listing.buitenProcedureAt = at;
-    rec.logbook = generatePublicLogbook(rec.listing, rec.revealed ?? [], rec.chain.all(), this.keypair);
-    return rec.logbook;
+    rec.logbook = logbook;
+    return logbook;
   }
 
   /** Is het logboek van deze woning al automatisch verstuurd? */
@@ -477,12 +625,25 @@ export class OpenBodStore {
 
     const deliveredAt = new Date().toISOString();
     const recipientRefs = recipients.map(bidderRef).sort();
-    const entry = rec.chain.append(
+    const entry = rec.chain.draft(
       "logboek_verstuurd",
       sha256Hex(canonicalize({ rootHash: logbook.rootHash, recipientRefs })),
     );
-    rec.delivery = { listingId: rec.listing.id, recipientRefs, deliveredAt, logIndex: entry.index };
-    return rec.delivery;
+    const delivery: DeliveryResult = {
+      listingId: rec.listing.id,
+      recipientRefs,
+      deliveredAt,
+      logIndex: entry.index,
+    };
+
+    this.db.transaction(() => {
+      this.db.appendLogEntry(rec.listing.id, entry);
+      this.db.saveDelivery(delivery);
+    });
+
+    rec.chain.commit(entry);
+    rec.delivery = delivery;
+    return delivery;
   }
 
   getRevealed(listingId: string): RevealedBid[] {

@@ -241,9 +241,12 @@ Bewuste MVP-vereenvoudigingen, met wat er in productie anders zou moeten:
 - **Vluchtige subject-pepper.** Zonder `IDENTITY_SUBJECT_PEPPER` genereert identity er lokaal zelf een.
   Handig om te draaien, maar subjects veranderen dan bij elke herstart. In productie weigert de backend
   te starten zonder, want een zwakker pseudoniem stilletjes uitdelen ondermijnt de claim eronder.
-- **Sub naar e-mail in het geheugen.** De identity-backend onthoudt die koppeling alleen
-  voor wie tijdens deze processtart inlogde. Na een herstart is bezorging aan eerdere
-  deelnemers onmogelijk tot zij opnieuw inloggen.
+- **Eén schrijver.** De opslag is SQLite in het core-proces
+  (`packages/core/src/persistence/`), dus de core kan niet in meervoud draaien.
+  Wie dat nodig heeft, zet een andere implementatie achter dezelfde
+  `Persistence`-poort; de invarianten en het API-contract veranderen niet.
+  Lokaal draait alles standaard zonder opslag: zet `CORE_DB_PATH` om dat te
+  wijzigen, en `IDENTITY_DB_PATH` voor de koppeling sub naar e-mail.
 - **Motivaties zijn voor niemand zichtbaar.** Een bieder kan een motivatie meesturen en die is
   uitsluitend voor de verkoper bedoeld, maar er is geen endpoint dat haar teruggeeft. Dat is met
   opzet: zonder verkopersrol zou zo'n endpoint de motivatie aan iedere ingelogde gebruiker tonen.

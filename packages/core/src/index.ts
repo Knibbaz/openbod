@@ -19,6 +19,11 @@ export {
   ListingNotFoundError,
   InvalidTransitionError,
   RuleViolationError,
+  ChainCorruptError,
   type CreateListingInput,
   type DeliveryResult,
 } from "./store.js";
+export { NoPersistence, type Persistence, type PersistedListing } from "./persistence/port.js";
+// SqlitePersistence bewust niet hier: die trekt `node:sqlite` mee, en dan hangt
+// ook de verifier en de browserbundel aan de opslaglaag. Wie hem nodig heeft,
+// importeert @openbod/core/dist/persistence/sqlite.js rechtstreeks.

@@ -10,6 +10,8 @@ import {
   InvalidTransitionError,
   RuleViolationError,
 } from "../store.js";
+import { NoPersistence, type Persistence } from "../persistence/port.js";
+import { SqlitePersistence } from "../persistence/sqlite.js";
 import { ConsoleLogbookDelivery, HttpLogbookDelivery, type LogbookDelivery } from "../logbook/delivery.js";
 import { verifyIdentityToken } from "./identity.js";
 import { demoStatus, startDemo } from "../demo/scenario.js";
@@ -98,7 +100,45 @@ function buildKeypair(): InstanceKeypair {
   return new InstanceKeypair(pem);
 }
 
-export const store = new OpenBodStore(buildDeliveryChannel(), buildKeypair());
+/**
+ * Waar de instantie haar biedingen bewaart. Zonder dit wist elke herstart de
+ * woningen, de biedingen en de logboeken, en dan houdt een bieder een
+ * ondertekend ontvangstbewijs vast voor iets wat niet meer bestaat.
+ *
+ * De demo-instantie is de uitzondering: die zet zichzelf elk half uur terug en
+ * heeft niets te bewaren.
+ */
+function buildPersistence(): Persistence {
+  if (DEMO_MODE) {
+    console.log("[core] DEMO-modus: niets wordt bewaard, de instantie begint elke ronde leeg.");
+    return new NoPersistence();
+  }
+  const path = process.env.CORE_DB_PATH?.trim() || "./data/openbod.db";
+  if (path === ":memory:") {
+    console.warn(
+      "[core] WAARSCHUWING: CORE_DB_PATH=:memory:, dus deze instantie wist alle biedingen bij een herstart.",
+    );
+    return new NoPersistence();
+  }
+  console.log(`[core] biedingen worden bewaard in ${path}`);
+  return new SqlitePersistence(path);
+}
+
+const persistence = buildPersistence();
+export const store = new OpenBodStore(buildDeliveryChannel(), buildKeypair(), persistence);
+
+/**
+ * Netjes afsluiten bij een `docker compose down` of een reboot. Alles wat
+ * bevestigd is, staat al op disk; dit zorgt er alleen voor dat de database
+ * gesloten en opgeruimd achterblijft in plaats van dat de volgende start hem
+ * uit het write-ahead log moet terughalen.
+ */
+for (const signaal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signaal, () => {
+    persistence.close();
+    process.exit(0);
+  });
+}
 
 const app = Fastify({
   logger: false,

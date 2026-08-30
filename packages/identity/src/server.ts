@@ -7,6 +7,7 @@ import { SignJWT } from "jose";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { loadKeys } from "./keys.js";
 import { deriveSubject, loadSubjectPepper } from "./subject.js";
+import { buildSubjectStore } from "./subjects.js";
 
 /**
  * Identity-backend: authenticatie via magic link, geeft een OIDC-stijl JWT
@@ -52,15 +53,27 @@ const ALLOWED_ORIGINS = (process.env.IDENTITY_ALLOWED_ORIGINS ?? "http://localho
  * de koppeling bestaat. Nodig om het biedlogboek automatisch te kunnen
  * verstrekken (E4-S3) zonder de scheiding op te geven.
  *
- * In-memory, net als de rest van de MVP: een herstart maakt bezorging aan
- * eerdere deelnemers onmogelijk tot zij opnieuw inloggen. Een productie-
- * instantie zet hier een persistente store neer.
+ * Blijft bewaard over een herstart heen, want anders kan het logboek niet
+ * bezorgd worden aan wie sindsdien niet opnieuw inlogde. Zie `subjects.ts`.
  */
-const knownSubjects = new Map<string, string>();
+const knownSubjects = buildSubjectStore(DEMO_MODE);
 
 // Gedeeld geheim tussen core en identity. Zonder dit zou /notify/logbook een
 // orakel zijn waarmee iedereen kan uitvragen of een sub bekend is.
 const DELIVERY_SHARED_SECRET = process.env.DELIVERY_SHARED_SECRET ?? "";
+
+/**
+ * Openstaande magic links. Bewust in het geheugen: een link die een herstart
+ * niet overleeft is een reden om een nieuwe aan te vragen, geen dataverlies.
+ */
+// Netjes afsluiten bij een `docker compose down`, zodat de database gesloten
+// achterblijft in plaats van dat de volgende start hem moet terughalen.
+for (const signaal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signaal, () => {
+    knownSubjects.close();
+    process.exit(0);
+  });
+}
 
 const pendingLinks = new Map<string, PendingLink>();
 const keys = await loadKeys();
@@ -146,7 +159,7 @@ app.post(
     pending.used = true;
 
     const sub = deriveSubject(pending.email, subjectPepper);
-    knownSubjects.set(sub, pending.email);
+    knownSubjects.remember(sub, pending.email);
     const jwt = await new SignJWT({ assurance_level: "email" })
       .setProtectedHeader({ alg: "ES256", kid: keys.kid })
       .setIssuer(ISSUER)
@@ -200,7 +213,7 @@ app.post(
     let delivered = 0;
     let unknown = 0;
     for (const sub of body.data.recipients) {
-      const email = knownSubjects.get(sub);
+      const email = knownSubjects.emailFor(sub);
       if (!email) {
         unknown += 1;
         continue;
