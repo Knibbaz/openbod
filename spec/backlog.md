@@ -580,6 +580,69 @@ Testcases:
 - TC2 (beveiliging): een deelnemer toevoegen na sluiting is zichtbaar in de keten.
 - TC3 (beveiliging): de trekking herhalen met een andere ronde levert een andere volgorde op en is als zodanig herkenbaar.
 
+## E16. Na de gunning: wat er nog kan afketsen
+
+De toestandsmachine stopt nu bij `onherroepelijk`, en die naam belooft te veel. In werkelijkheid begint daar de fase waarin het alsnog misgaat: de koopovereenkomst, drie dagen wettelijke bedenktijd, en daarna de voorbehouden die de bieder zelf in zijn bod zette. Financiering niet rond, bouwkundige keuring tegen, eigen woning niet verkocht.
+
+Dit is dezelfde klacht als E7-S2, alleen een stap later in de tijd. "De koper kreeg zijn financiering niet rond" is nu een mededeling van de makelaar die niemand kan controleren. De nummer twee heeft geen manier om te weten of dat waar is, of dat het huis stilletjes aan iemand anders is gegaan voor een beter bod. Het logboek eindigt bij `gegund` en het verhaal stopt daar.
+
+Drie redenen waarom dit hier hoort en niet in een ander systeem:
+
+- De voorbehouden staan al verzegeld in het bod en al in het openbare logboek. De keten sluiten kost geen nieuwe gegevens, alleen nieuwe regels.
+- Als de gunning vervalt en de verkoper naar de nummer twee gaat, is dat een verdeelbesluit dat net zo traceerbaar hoort te zijn als de eerste gunning.
+- De beheerkant zegt nu al tegen de verkoper dat een lager bod zonder voorbehouden meer zekerheid kan geven. Zolang niemand de afloop vastlegt, is dat een aanname. Met deze regels wordt op termijn aantoonbaar hoe vaak een bod met financieringsvoorbehoud daadwerkelijk doorgaat, en dat weet vandaag niemand.
+
+### E16-S1 De afloop van een gunning vastleggen
+Als bieder wil ik weten of de verkoop aan de winnaar is doorgegaan, zodat "de financiering kwam niet rond" een controleerbare bewering wordt in plaats van een telefoontje.
+
+Nieuwe logregels, additief zodat oude logboeken blijven verifiëren: het inroepen van een voorbehoud (welk voorbehoud, wanneer, door welke pseudonieme partij), het vervallen van de gunning, een nieuwe gunning aan een ander bod, en het voltooien van de verkoop bij de notaris. Pas dat laatste is werkelijk een eindstatus.
+
+Wat het systeem hier niet kan en ook niet moet beweren: toetsen of de financiering écht niet rond kwam. Net als bij E7-S2 legt het vast wat er verklaard is, wanneer, en door wie, zodat het aanvechtbaar wordt in plaats van onzichtbaar.
+
+Het logboek gaat opnieuw naar alle betrokkenen zodra de gunning vervalt (I14). Juist de nummer twee heeft dat nodig, want voor hem verandert er iets.
+
+Openstaande vragen:
+- `onherroepelijk` heet nu ten onrechte zo, want hij is herroepelijk. Hernoemen is een formaatwijziging die oude logboeken raakt, dus waarschijnlijk moet de bestaande status blijven staan met een nieuwe status erachter. Welke naam krijgt de echte eindstatus?
+- Mag de verkoper na een vervallen gunning nieuwe biedingen ophalen, of alleen kiezen uit de bestaande? Het systeem kan dat niet verhinderen; de vraag is wat het vastlegt.
+- Hoort de bedenktijd van drie dagen als eigen regel in de keten, of is dat overdaad?
+
+Acceptatiecriteria:
+- Een vervallen gunning levert een logregel op met het ingeroepen voorbehoud en het moment.
+- Daarna is opnieuw gunnen mogelijk aan een ander geldig onthuld bod, en dat is een aparte regel.
+- Alle bieders krijgen bij het vervallen opnieuw het logboek.
+- Een logboek van vóór deze wijziging verifieert ongewijzigd.
+
+Testcases:
+- TC1: gunnen, voorbehoud inroepen, opnieuw gunnen aan de nummer twee, en de keten verifieert.
+- TC2 (beveiliging): een voltooide verkoop kan niet alsnog vervallen worden verklaard.
+- TC3 (privacy): in de logregel staat geen naam, alleen de pseudonieme verwijzing die er al was.
+
+## E17. Bezichtigingen tellen
+
+Voorstel: laten zien hoeveel mensen zich voor een bezichtiging inschreven en hoeveel er kwamen. Aantrekkelijk, want "er zijn al dertig bezichtigingen geweest" is precies zo'n mededeling waarmee aan de telefoon druk wordt opgebouwd en die niemand kan narekenen.
+
+Er zit alleen een spanning in die eerst opgelost moet worden, anders bouwt dit het probleem terug dat de rest van het systeem afschaft.
+
+**De makelaar moet weten wie er komt.** Een bezichtiging plannen kan niet anoniem. Zodra inschrijven via dit systeem loopt, weet de makelaar dus vóór de sluitingstijd wie er belangstelling heeft. Dat is dezelfde informatievoorsprong die het verzegeld bieden juist wegneemt. In de praktijk weet hij dat toch al, maar het verschil is dat het systeem die gegevens dan zelf gaat houden, naast de biedgegevens, onder hetzelfde account.
+
+Daaruit volgt de harde ontwerpregel: **geen enkel endpoint mag een inschrijving voor een bezichtiging koppelen aan een bod.** Geen "van de bezichtigers heeft de helft geboden", niet voor de makelaar en niet intern. De twee sporen delen een account maar mogen nergens samen opvraagbaar zijn.
+
+**En het tweede getal is zwakker dan het eerste.** Hoeveel mensen zich inschreven is verifieerbaar, want dat is een handeling in het systeem met een ontvangstbewijs. Hoeveel er daadwerkelijk kwamen is een bewering van de makelaar, tenzij de bezoeker het zelf vanuit zijn eigen account bevestigt. Een getal dat alleen de makelaar invult, hoort niet thuis in een systeem dat zijn geloofwaardigheid ontleent aan narekenbaarheid: dan leent het gezag dat het niet verdiend heeft. Ofwel tweezijdig bevestigd, ofwel er expliciet bij zetten dat het een opgave van de makelaar is.
+
+### E17-S1 Verifieerbare inschrijving voor een bezichtiging
+Als bieder wil ik zien hoeveel mensen zich voor een bezichtiging inschreven, zodat drukte een getal is in plaats van een telefoontje.
+
+Acceptatiecriteria:
+- Inschrijven is een handeling in het systeem en levert de inschrijver een bewijs op.
+- Het aantal inschrijvingen staat bij de woning, met dezelfde soort schakelaar als `aantalBiedingenZichtbaar` uit I9: vooraf vastgelegd, voor iedereen gelijk, niet halverwege te wijzigen.
+- Het aantal is na sluiting niet meer aan te passen.
+- Aanwezigheid telt alleen mee als de bezoeker het zelf bevestigt; anders staat er "opgave van de makelaar" bij.
+
+Testcases:
+- TC1: het getoonde aantal komt overeen met het aantal inschrijvingen in de keten.
+- TC2 (privacy): er bestaat geen endpoint dat bezichtigers en bieders aan elkaar koppelt.
+- TC3 (beveiliging): het aantal achteraf verhogen is zichtbaar.
+
 ## E9. Federatie en conformiteit
 
 ### E9-S1 Conformance-suite
