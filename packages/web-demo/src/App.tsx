@@ -15,6 +15,7 @@ import { BeheerOverzicht } from "./pages/BeheerOverzicht";
 import { BeheerNieuw } from "./pages/BeheerNieuw";
 import { BeheerWoning } from "./pages/BeheerWoning";
 import { Uitleg } from "./pages/Uitleg";
+import { Beloftes } from "./pages/Beloftes";
 import { clearToken, getToken } from "./lib/api";
 import { Demobanner } from "./components/Demobanner";
 import { Onveiligebanner } from "./components/Onveiligebanner";
@@ -47,6 +48,14 @@ function App() {
               size="small"
             >
               Uitleg
+            </Button>
+            <Button
+              component={RouterLink}
+              to="/beloftes"
+              color={locatie.pathname === "/beloftes" ? "primary" : "inherit"}
+              size="small"
+            >
+              Beloftes
             </Button>
             <Button
               component={RouterLink}
@@ -89,6 +98,7 @@ function App() {
           <Route path="/woningen/:id" element={<Woning />} />
           <Route path="/login" element={<Login />} />
           <Route path="/uitleg" element={<Uitleg />} />
+            <Route path="/beloftes" element={<Beloftes />} />
           {/* Beheer is voor de verkoper en zijn makelaar. De publieke
               woningpagina toont daarom nooit meer een gunningsknop. */}
           <Route path="/beheer" element={<BeheerOverzicht />} />
