@@ -500,6 +500,86 @@ Acceptatiecriteria:
 - Er is geen functie die een bod op een later moment verstuurt, in de browser noch op de server.
 - Het scherm legt uit dat nu versturen niets kost en dat aanpassen open blijft.
 
+## E14. Andere dossiers op hetzelfde protocol
+
+Bevinding uit een verkenning: de helft van de core is al domeinneutraal en de andere helft is uitgeschreven huizenverkoop. Neutraal zijn `log/`, `commit/`, `timelock/`, `reveal/`, `logbook/`, de identiteitslaag, de ontvangstbewijzen en de verifier. Vastgeschreven zijn `model/types.ts` en `store.ts`: `prijsVorm`, `verkoopmethode`, `takeoverItems`, de voorbehouden, `Kenmerken` en de BAG-koppeling. In core en verifier staan daar 42 verwijzingen naar, verspreid over ruim twintig bestanden inclusief frontend.
+
+De belangrijkste bevinding is dat de refactor in twee helften uiteenvalt die niet even duur zijn, en dat de goedkope helft genoeg is voor het eerstvolgende doel.
+
+**De woningkant is goedkoop.** `computeDossierHash` hasht al een canoniek object (`model/dossier.ts`). Of daar `woonoppervlak` in staat of `erfpachtcanon` maakt het mechanisme niet uit. Een dossierprofiel invoeren raakt dus geen enkele hash-eigenschap en breekt geen oude logboeken, mits het profiel zelf in de hash meegaat.
+
+**De biedkant is duur, en die hoef je niet aan te raken.** `conditions` en `takeover` zitten in `BidPayload`, en die gaat de commitment in. Dat generiek maken is een geversioneerd formaat, met de val uit E7-S4 eromheen: `bidPayloadSchema` draait bij de onthulling, ná de commitment-controle, dus een gewijzigd schema zou eerder verzegelde biedingen alsnog ongeldig maken. Voor de domeinen die nu in beeld zijn is dat niet nodig: bij een vakantiehuis zijn de voorbehouden en roerende zaken hetzelfde, en bij een loting bestaat er helemaal geen biedpakket.
+
+### E14-S1 Dossierprofiel in plaats van een vast huizendossier
+Als beheerder van een instantie wil ik een ander soort object kunnen aanbieden zonder het protocol te wijzigen, zodat dezelfde garanties gelden voor meer dan een rijtjeshuis.
+
+Voorstel: `Dossier` krijgt een `profiel` (bijvoorbeeld `woning`, `recreatiewoning`) plus een kern die voor elk profiel geldt (adres of locatie, prijsvorm, verkoopmethode, sluitingstijd, spelregels) en een open veldenzak die per profiel getypeerd wordt. Het profiel zelf gaat mee de hash in, zodat "welk soort dossier was dit" net zo vastligt als de inhoud.
+
+Invarianten die hier niet door mogen veranderen, en die dus in de testcases horen:
+- I15 blijft gelden: alles wat aan bieders getoond is, zit in de openingsregel.
+- I9 blijft gelden: de spelregels liggen vast bij het openen.
+- Het commitment- en logboekformaat blijft ongewijzigd; een logboek van vóór deze wijziging moet blijven verifiëren.
+
+Acceptatiecriteria:
+- Een woning en een recreatiewoning draaien op dezelfde core, met hetzelfde logboek en dezelfde verifier.
+- Het profiel staat in de dossierhash en zichtbaar bij het object.
+- Een onbekend profiel wordt geweigerd bij het aanmaken, niet stilzwijgend genegeerd.
+
+Testcases:
+- TC1: een logboek dat vóór deze wijziging is uitgegeven, verifieert nog steeds.
+- TC2: hetzelfde dossier onder een ander profiel levert een andere dossierhash op.
+- TC3 (beveiliging): een veld dat niet bij het profiel hoort, komt niet ongemerkt in de hash terecht.
+
+### E14-S2 Vakantiehuis verkopen als eerste extra profiel
+Als aanbieder van een recreatiewoning wil ik dezelfde procedure kunnen gebruiken, want het is dezelfde transactie met dezelfde klacht.
+
+Dit is bewust het eerste extra profiel omdat het bijna niets kost: dezelfde partijen, dezelfde procedure, dezelfde voorbehouden en roerende zaken. Wat afwijkt zijn dossiervelden, en die passen in het profiel uit E14-S1 zonder dat het protocol verandert. De BAG-koppeling werkt voor een recreatiewoning met een adres gewoon, en anders slaat de invoer die stap over.
+
+Het is geen nieuw product maar een extra dossierprofiel, en juist daarom waardevol: het bewijst dat het protocol generaliseert zonder dat er iets aan de garanties verandert.
+
+Acceptatiecriteria:
+- Profiel `recreatiewoning` met de eigen velden: erfpacht of eigen grond, parkregels of parkbijdrage, en of er een verplichte verhuurpool aan hangt.
+- Adresinvoer werkt met en zonder BAG-treffer.
+- Het biedpakket verandert niet: dezelfde voorbehouden, dezelfde roerende zaken.
+
+Testcases:
+- TC1: een volledige procedure op een recreatiewoning levert hetzelfde soort logboek op als op een woning.
+- TC2: de verifier ziet geen verschil.
+
+## E15. Verifieerbare loting bij nieuwbouw
+
+Nieuwbouw is meestal geen veiling. De ontwikkelaar zet de prijs vast en verdeelt bij overinschrijving via loting of via criteria zoals lokale binding en voorrang voor starters. De biedmachinerie doet daar niets, want er is geen prijsconcurrentie.
+
+De klacht is wel dezelfde soort onbewijsbaarheid: was die loting eerlijk, kreeg de neef van de ontwikkelaar er een, zaten er meer inschrijvingen in dan getoond. En het gereedschap ligt er al, want **drand is niet alleen een tijdslot maar een lotingsmachine**: publieke, onvoorspelbare willekeur die niemand beheerst en die op een afgesproken moment vrijkomt. Nu wordt alleen de tijdsloteigenschap gebruikt.
+
+Wie hier belang bij heeft is niet in de eerste plaats de makelaar. De ontwikkelaar voert de verdeling uit en heeft, net als de makelaar bij bieden, weinig eigen belang bij openheid. De twee partijen die het wél willen zijn de inschrijver, en de gemeente: die legt bij nieuwbouw voorwaarden op over doelgroepen en lokale binding en wil kunnen aantonen dat die nagekomen zijn. Een verifieerbare loting is voor een gemeente een nalevingsinstrument, niet alleen een gebaar naar kopers.
+
+### E15-S1 Loting die iedereen zelf kan naspelen
+Als inschrijver wil ik de uitslag van de loting zelf kunnen narekenen, zodat "de trekking was eerlijk" een controleerbare bewering wordt.
+
+Werking:
+- Inschrijven levert een ontvangstbewijs op, zodat achteraf vaststaat dat je vóór de trekking in de pot zat.
+- Op de sluitingstijd wordt de deelnemerslijst afgesloten en gaat de slotcode van die lijst de hashketen in.
+- De volgorde volgt uit de drand-ronde van het trekkingsmoment. Die handtekening bestaat op het moment van sluiten nog niet, dus niemand kan naar een gewenste uitkomst toe rekenen.
+- Iedereen kan de uitslag naspelen uit de afgesloten lijst plus de rondehandtekening.
+
+Hergebruik: identiteit, hashketen, ontvangstbewijzen, logboek, automatische verstrekking, verifier. Nieuw is een verdeelmodule in plaats van commit-reveal. Er is geen biedpakket, dus de dure kant uit E14 speelt hier niet.
+
+Openstaande vragen:
+- Hoe worden voorrangscriteria (lokale binding, starter) verwerkt: als aparte pots met elk een eigen loting, of als gewogen volgorde? Het eerste is uitlegbaarder en beter te controleren.
+- Wat is het bewijs achter een criterium? Waarschijnlijk hetzelfde antwoord als bij E7-S3: het systeem toetst het niet, het legt vast wat er verklaard is en welke pot daaruit volgde.
+- Blijven de invarianten I1 tot en met I15 gelden, of krijgt loting een eigen set? Er is geen verzegeld bedrag, dus I1, I2 en I4 werken anders.
+
+Acceptatiecriteria:
+- Uit de gepubliceerde deelnemerslijst en het rondenummer komt bij iedereen dezelfde uitslag.
+- De lijst kan na sluiting niet meer wijzigen zonder dat de keten breekt.
+- Een inschrijver kan met zijn ontvangstbewijs aantonen dat hij in de gelote lijst zat.
+
+Testcases:
+- TC1: twee onafhankelijke verifiers komen op dezelfde volgorde.
+- TC2 (beveiliging): een deelnemer toevoegen na sluiting is zichtbaar in de keten.
+- TC3 (beveiliging): de trekking herhalen met een andere ronde levert een andere volgorde op en is als zodanig herkenbaar.
+
 ## E9. Federatie en conformiteit
 
 ### E9-S1 Conformance-suite
