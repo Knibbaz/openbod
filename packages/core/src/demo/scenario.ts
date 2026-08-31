@@ -1,4 +1,5 @@
 import { sealBid } from "../commit/seal.js";
+import { sha256Hex } from "../commit/hash.js";
 import type { CreateListingInput, OpenBodStore } from "../store.js";
 import type { BidPayload } from "../model/types.js";
 import { maakLogger } from "../logging/logger.js";
@@ -69,6 +70,16 @@ function bod(sub: string, amount: number, payload: Partial<BidPayload> = {}): De
 }
 
 /**
+ * Sub van een demo-bieder. Echte subs zijn 64 hex (HMAC-SHA256 over het
+ * genormaliseerde adres); ook de nep-bieders van het scenario krijgen die vorm,
+ * want de bezorging van het logboek valideert ontvangers daarop. Het scenario
+ * blijft leesbaar via de naam, die hier alleen als ingang dient.
+ */
+function demoSub(name: string): string {
+  return sha256Hex(`demo:${name}`);
+}
+
+/**
  * De woningen van het scenario. De adressen zijn verzonnen en de omschrijving
  * zegt dat er niets te koop staat: een bezoeker mag geen moment denken dat hij
  * op een echt huis biedt.
@@ -94,8 +105,8 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         kenmerken: { woonoppervlak: 118, perceeloppervlak: 240, kamers: 5, slaapkamers: 3, bouwjaar: 1932, energielabel: "C" },
       },
       biedingen: [
-        bod("demo-bieder-anna", 431_000, { conditions: [{ type: "financieel" }] }),
-        bod("demo-bieder-joris", 428_500),
+        bod(demoSub("anna"), 431_000, { conditions: [{ type: "financieel" }] }),
+        bod(demoSub("joris"), 428_500),
       ],
     },
     {
@@ -112,10 +123,10 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         kenmerken: { woonoppervlak: 94, perceeloppervlak: 165, kamers: 4, slaapkamers: 3, bouwjaar: 1968, energielabel: "D" },
       },
       biedingen: [
-        bod("demo-bieder-samira", 322_000),
-        bod("demo-bieder-tom", 318_000, { conditions: [{ type: "bouwkundige_keuring" }] }),
-        bod("demo-bieder-ines", 329_500, { conditions: [{ type: "financieel" }, { type: "nhg" }] }),
-        bod("demo-bieder-peter", 315_000),
+        bod(demoSub("samira"), 322_000),
+        bod(demoSub("tom"), 318_000, { conditions: [{ type: "bouwkundige_keuring" }] }),
+        bod(demoSub("ines"), 329_500, { conditions: [{ type: "financieel" }, { type: "nhg" }] }),
+        bod(demoSub("peter"), 315_000),
       ],
     },
     {
@@ -132,9 +143,9 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         kenmerken: { woonoppervlak: 156, perceeloppervlak: 620, kamers: 6, slaapkamers: 4, bouwjaar: 1994, energielabel: "A" },
       },
       biedingen: [
-        bod("demo-bieder-hakim", 561_000, { motivation: "Wij wonen al in de wijk en onze kinderen zitten hier op school." }),
-        bod("demo-bieder-lotte", 555_000, { conditions: [{ type: "verkoop_eigen_woning" }] }),
-        bod("demo-bieder-daan", 572_000, { conditions: [{ type: "financieel" }] }),
+        bod(demoSub("hakim"), 561_000, { motivation: "Wij wonen al in de wijk en onze kinderen zitten hier op school." }),
+        bod(demoSub("lotte"), 555_000, { conditions: [{ type: "verkoop_eigen_woning" }] }),
+        bod(demoSub("daan"), 572_000, { conditions: [{ type: "financieel" }] }),
       ],
       afloop: "gunnen",
     },
@@ -151,7 +162,7 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         omschrijving: `Bovenwoning in de binnenstad. ${demoNoot} Deze verkoop is buiten de inschrijving om afgehandeld: de biedingen zijn nooit geopend, en dát is hier precies het bewijs dat de bieders in handen hebben.`,
         kenmerken: { woonoppervlak: 72, kamers: 3, slaapkamers: 2, bouwjaar: 1901, energielabel: "F" },
       },
-      biedingen: [bod("demo-bieder-eva", 295_000), bod("demo-bieder-mo", 291_500)],
+      biedingen: [bod(demoSub("eva"), 295_000), bod(demoSub("mo"), 291_500)],
       afloop: "afbreken",
     },
     {
@@ -167,7 +178,7 @@ function scenario(): { listing: CreateListingInput; biedingen: DemoBod[]; afloop
         omschrijving: `Twee-onder-een-kap met garage. ${demoNoot} Hier gelden strengere spelregels: aanpassen en intrekken mag niet en het aantal biedingen is niet zichtbaar. Dat stond vooraf vast en geldt voor iedereen gelijk. Bieden kan.`,
         kenmerken: { woonoppervlak: 128, perceeloppervlak: 310, kamers: 5, slaapkamers: 4, bouwjaar: 2004, energielabel: "B" },
       },
-      biedingen: [bod("demo-bieder-wouter", 384_000)],
+      biedingen: [bod(demoSub("wouter"), 384_000)],
     },
   ];
 }
